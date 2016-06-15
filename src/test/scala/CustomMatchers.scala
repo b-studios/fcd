@@ -11,18 +11,19 @@ trait CustomMatchers { self: FunSpec with Matchers =>
   //
   // Override _parsers in concrete tests suites with the
   // appropriate parser implementation.
+  type Parsers = RichParsers
   def _parsers: RichParsers
   lazy val parsers = _parsers
-  import parsers.{ Results, isSuccess, Parser, accepts }
+  import parsers.{ Results, isSuccess, Parser, accepts, Elem }
 
   implicit class ParserTests[T, P <% Parser[T]](p: => P) {
-    def shouldParse(s: String, tags: Tag*) =
+    def shouldParse[ES <% Iterable[Elem]](s: ES, tags: Tag*) =
       it (s"""should parse "$s" """, tags:_*) {
-        accepts(p, s.toList) shouldBe true
+        accepts(p, s) shouldBe true
       }
-    def shouldNotParse(s: String, tags: Tag*) =
+    def shouldNotParse[ES <% Iterable[Elem]](s: ES, tags: Tag*) =
       it (s"""should not parse "$s" """, tags:_*) {
-        accepts(p, s.toList) shouldBe false
+        accepts(p, s) shouldBe false
       }
   }
 

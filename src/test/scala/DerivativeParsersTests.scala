@@ -8,7 +8,8 @@ import language.implicitConversions
 class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
     with BasicCombinatorTests
     with NegationTests
-    with LeftrecTests {
+    with LeftrecTests
+    with Section3 with Section4 with Section5 {
 
   def _parsers: DerivativeParsers.type = DerivativeParsers
   override lazy val parsers: DerivativeParsers.type = _parsers
@@ -17,14 +18,12 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
 
   // it is necessary to rename some combinators since names are already
   // bound by scala test.
-  import parsers.{ fail => err, noneOf => nonOf }
+  import parsers.{ fail => err, noneOf => nonOf, oneOf => one, not => neg }
 
-  lazy val space = some(" ")
-  lazy val spaces = many(" ")
-  lazy val name: Parser[String] = some(asciiLetter)
-  def strip[T](p: Parser[T]): Parser[T] = spaces ~> (p <~ spaces)
-
-  ignore("printing graph representations of parsers") {
+  // This test illustrates how to write graph representations of the
+  // parsers to a file. (To execute it replace `ignore` by `describe` and
+  // run the tests.
+  describe("printing graph representations of parsers") {
     lazy val num: Parser[Any] = many(digit)
     lazy val A: NT[Any] = B ~ '-' ~ num | num
     lazy val B: NT[Any] = succeed(()) ~ A
@@ -32,36 +31,17 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
     A.printToFile("test.png")
   }
 
-  describe("Examples in section 2") {
-    val digit: Parser[Int] = acceptIf(_.isDigit) ^^ { s => Integer.valueOf(s.toString) }
-
-    lazy val number: NT[Int] =
-      ( number ~ digit ^^ { case (n, d) => (n * 10) + d }
-      | digit
-      )
-
+  describe("Examples in section 3") {
+    import section_3_2._
     number shouldParse "42"
   }
 
   describe("Indentation with feed") {
-
-    def indentBy[T](n: Int): Parser[T] => Parser[T] = p =>
-      done(p) | manyN(n, space) ~> readLine(n)(p)
-
-    def readLine[T](n: Int)(p: Parser[T]): Parser[T] =
-      ( nonOf("\n")  >> { c => readLine(n)(p << c) }
-      | accept('\n') >> { c => indentBy(n)(p << c) }
-      )
-
-    def indented[T](p: Parser[T]): Parser[T] = consumed(some(space)) >> { case s =>
-      // this simulates lookahead for greedy matching
-      nonOf(" ") >> { c => indentBy(s.size)(p) <<< s << c }
-    }
+    import section_3_4_improved._
 
     val xs = many(some('x') ~ '\n')
     indented(xs) shouldParse "  xxx\n  xxxx\n"
     indented(xs) shouldParse "      xxxxxxxxxx\n      xxxxxxxxxx\n"
-
 
     lazy val stmt: NT[Any] =
       ("while" ~ space ~ "(true):" ~ block
@@ -75,19 +55,11 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
   }
 
   describe("Indentation with delegation") {
-    lazy val line = (many(nonOf("\n")) <~ newline)
-    def indentBy[T](n: Int): Parser[T] => Parser[T] = p =>
-      done(p) | manyN(n, space) ~> (line &> delegate(p)) >> indentBy(n)
-
-    def indented[T](p: Parser[T]): Parser[T] = consumed(some(space)) >> { case s =>
-      // this simulates lookahead for greedy matching
-      nonOf(" ") >> { c => indentBy(s.size)(p) <<< s << c }
-    }
+    import section_3_5_improved._
 
     val xs = many(some('x') ~ '\n')
     indented(xs) shouldParse "  xxx\n  xxxx\n"
     indented(xs) shouldParse "      xxxxxxxxxx\n      xxxxxxxxxx\n"
-
 
     lazy val stmt: NT[Any] =
       ("while" ~ space ~ "(true):" ~ block
@@ -101,39 +73,7 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
   }
 
   describe("Simplified tables for paper") {
-
-    type Layout = List[Int]
-
-    def table[T](cell: Parser[T]): Parser[List[List[T]]] =
-      (head <~ '\n') >> { layout => body(layout, cell) }
-
-    // a parser computing the table layout
-    def head: Parser[Layout] = some('+'~> manyCount('-')) <~ '+'
-
-    def body[T](layout: Layout, cell: Parser[T]): Parser[List[List[T]]] =
-      many(rowLine(layout, layout.map(n => cell)) <~ rowSeparator(layout))
-
-    // given a layout, creates a parser for row separators
-    def rowSeparator(layout: Layout): Parser[Any] =
-      layout.map { n => ("-" * n) + "+" }.foldLeft("+")(_+_) ~ '\n'
-
-    // either read another rowLine or quit cell parsers and collect results
-    def rowLine[T](layout: Layout, cells: List[Parser[T]]): Parser[List[T]] =
-      ( ('|' ~> distr(delegateCells(layout, cells)) <~ '\n') >> { cs => rowLine(layout, cs) }
-      | collect(cells)
-      )
-
-    // first feed n tokens to every cell parser, then feed newline and read a pipe
-    def delegateCells[T](layout: Layout, cells: List[Parser[T]]): List[Parser[Parser[T]]] =
-      layout.zip(cells).map {
-        case (n, p) => delegateN(n, p).map(_ << '\n') <~ '|'
-      }
-
-
-    // The only parser that makes use of `<<` is delegate Cells, all others just use standard combinators
-    // 1. feed n tokens to p
-    // 2. feed newline and read bar
-
+    import section_5_2.table
 
     lazy val xs = many(some('x') ~ '\n')
 
@@ -312,9 +252,7 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
 
 
 
-  // Usecase 1.
-  // ----------
-  // interleaving parsers
+  // Usecase. interleaving parsers
   def interleave[T, S](p: Parser[T], q: Parser[S]): Parser[(T, S)] =
       (done(p) & done(q)) | eat { c =>
         interleave(q, (p << c)) map { case (s, t) => (t, s) }
@@ -331,20 +269,7 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
     interleave(p, q) shouldNotParse ""
   }
 
-  // Usecase 2.
-  // ----------
-  // modular indentation
-  // this can be cached the same way as `many` and `some`
-
-  // Character based dispatch
-  def dispatch[T](cs: (Elem, Elem => Parser[T])*)(default: Elem => Parser[T]): Parser[T] =
-    eat { el =>
-      cs find { case (c, f) => c == el } match {
-        case Some((_, f)) => f(el)
-        case None => default(el)
-      }
-    }
-
+  // Usecase. Indentation that also skips empty lines
   def indent[T](p: Parser[T]): Parser[T] = {
 
     def readLine(p: Parser[T]): Parser[T] = done(p) | eat { c =>
@@ -396,63 +321,16 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
     indent(indent(xs)) shouldNotParse "    xxxxx\n   \n\n   \n   xxxxxxx\n"
   }
 
-
-  // the above indentation does not allow ignoring indentation in braces / multiline strings
-  describe("lexical aware indentation") {
-    def indent[T](lexeme: Parser[String])(p: Parser[T]): Parser[T] = {
-
-      def readLine(p: Parser[T]): Parser[T] =
-        done(p) | lexeme >> { lex =>
-          if (lex == "\n") { indent(lexeme)(p <<< lex) }
-          else { readLine(p <<< lex) }
-        }
-
-      done(p) | (space ~ space) ~> readLine(p)
-    }
-
-    val name: Parser[String] = some(letter)
-    val str: Parser[String] = consumed('"' ~ many(nonOf("\"")) ~ '"')
-
-    // lexemes are not terminated by space/newline/eos, so for xxx flatmap above will be called
-    // three times (x, xx, xxx). In an extension with lookahead, this could be fixed.
-    val lexeme: Parser[String] = name | " " | "\n" | str
-
-    val xs = many(some("x" | str) ~ '\n')
-
-    lazy val ind = indent(lexeme)(xs)
-
-    ind shouldParse "    xx\n"
-    ind shouldParse "    xxxxx\n"
-    ind shouldParse "    xxxxx\n    xxxxxxx\n"
-
-    (ind <<< "    xxxxx\n    xxxxxxx\n").results.size shouldBe 1
-
-    ind shouldParse "    xxx\"\"xx\n    xxxxxxx\n"
-    ind shouldParse "    xxx\"   \n    \n\n   \"xx\n    xxxxxxx\n"
-    ind shouldNotParse "    xxx\"   \n    \n\nxx\n    xxxxxxx\n"
-    ind shouldNotParse "    xxxxx\n xxxx\n"
-  }
-
-
-  lazy val parens: NT[Any] = '(' ~ parens ~ ')' | succeed(())
-
-
   describe("Parens parser") {
+    import section_5_2.parens
     parens shouldParse ""
     parens shouldParse "()"
     parens shouldParse "(())"
     parens shouldNotParse "(()"
   }
 
-  def spaced[T]: Parser[T] => Parser[T] = p =>
-    done(p) | eat {
-      case ' ' => spaced(p)
-      case '\n' => spaced(p)
-      case c => spaced(p << c)
-    }
-
   describe("Retroactively, allow spaces in arbitrary positions") {
-
+    import section_5_2.{ spaced, parens }
     val sp = spaced(parens)
 
     sp shouldParse "((()))"
@@ -464,82 +342,91 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
   }
 
   describe("Allowing parens in code blocks") {
-    // example:
-    // aaaaa
-    // ~~~
-    // (
-    // ~~~
-    // aa
-    // aaaa
-    // aa
-    //
-    val as: Parser[Any] = some(some('a') | many('a') <~ '\n')
+    import section_5_2._
 
-    as shouldParse "aaa"
     as shouldParse "aaa\n"
     as shouldParse "\n"
-    as shouldParse "aa\naa"
+    as shouldParse "aa\naa\n"
 
-    val marker: Parser[Any] = "\n~~~\n"
+    both shouldParse "a\n"
+    both shouldParse """aaa
+                       |~~~
+                       |()
+                       |~~~
+                       |aaaaa
+                       |""".stripMargin('|')
 
-    // We have two states: Inside the code block and outside the code block
-    def inCode[R, S](text: Parser[R], code: Parser[S]): NT[(R, S)] =
-      ( marker ~> inText(text, code)
-      | eat { c => inCode(text, code << c) }
-      )
+    both shouldParse "a  \n\n~~~  \n()\n~~~\naaa\n"
 
-    def inText[R, S](text: Parser[R], code: Parser[S]): NT[(R, S)] =
-      ( done(text & code)
-      | marker ~> inCode(text, code)
-      | eat { c => inText(text << c, code) }
-      )
+    both shouldNotParse """aaa
+                          |~~~
+                          |(
+                          |~~~
+                          |aaaaa
+                          |""".stripMargin('|')
 
-    val parensAs = inText(as, parens)
-
-    parensAs shouldParse "a"
-    parensAs shouldParse """aaa
-                           |~~~
-                           |()
-                           |~~~
-                           |aaaaa
-                           |""".stripMargin('|')
-
-    parensAs shouldNotParse """aaa
-                              |~~~
-                              |(
-                              |~~~
-                              |aaaaa
-                              |""".stripMargin('|')
-
-    parensAs shouldParse """aaa
-                           |~~~
-                           |((())
-                           |~~~
-                           |aaaaa
-                           |
-                           |~~~
-                           |)
-                           |~~~
-                           |""".stripMargin('|')
+    both shouldParse """aaa
+                       |~~~
+                       |((())
+                       |~~~
+                       |aaaaa
+                       |
+                       |~~~
+                       |)
+                       |~~~
+                       |""".stripMargin('|')
   }
 
 
 
   describe("Unescape") {
 
-    def un(s: String): String = StringContext treatEscapes s
-
-    def unescape[T](p: Parser[T]): Parser[T] =
-      done(p) | eat {
-        case '\\' => char >> { c =>
-          unescape( p <<< un(s"\\$c") )
-        }
-        case c => unescape(p << c)
-      }
+    import section_5_2._
 
     unescape(many('\n')) shouldParse """\n\n\n"""
     unescape(many("\n" | "a")) shouldParse """\na\n\n"""
     unescape(many("\n" | "a")) shouldParse """\na\n\naaa"""
+  }
+
+  describe("Combined examples") {
+    import section_5_2._
+    combined shouldParse """aaa
+                           ^""".stripMargin('^')
+
+    combined shouldParse """+----+
+                           ^|aaaa|
+                           ^+----+
+                           ^""".stripMargin('^')
+
+    combined shouldParse """+----+
+                           ^|aa  |
+                           ^+----+
+                           ^""".stripMargin('^')
+
+    combined shouldParse """+----+
+                           ^|aaaa|
+                           ^|~~~ |
+                           ^|(())|
+                           ^|~~~ |
+                           ^|aaaa|
+                           ^+----+
+                           ^""".stripMargin('^')
+
+    combined shouldParse """+----+
+                           ^|aa  |
+                           ^|aaaa|
+                           ^+----+
+                           ^""".stripMargin('^')
+
+    combined shouldParse """+----+
+                           ^|aa  |
+                           ^|~~~ |
+                           ^|(())|
+                           ^|~~~ |
+                           ^|aaaa|
+                           ^+----+
+                           ^""".stripMargin('^')
+
   }
 
 }

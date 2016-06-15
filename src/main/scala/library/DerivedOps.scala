@@ -6,6 +6,8 @@ trait DerivedOps { self: Parsers with Syntax =>
 
   def accept(t: Elem): Parser[Elem] = acceptIf(_ == t)
 
+  def no(t: Elem): Parser[Elem] = acceptIf(_ != t)
+
   def acceptSeq[ES <% Iterable[Elem]](es: ES): Parser[List[Elem]] =
     es.foldRight[Parser[List[Elem]]](succeed(Nil)) { (x, pxs) =>
       accept(x) ~ pxs map mkList
