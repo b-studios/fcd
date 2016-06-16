@@ -16,3 +16,6 @@ parallelExecution in Test := true
 libraryDependencies += "org.scala-lang.modules" % "scala-xml_2.11" % "1.0.5"
 
 initialCommands in console := """import fcd._; import fcd.DerivativeParsers._"""
+
+// For VM users on windows systems, please uncomment the following line:
+// target := file("/home/vagrant/target/")
