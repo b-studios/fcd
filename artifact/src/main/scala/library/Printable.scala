@@ -47,7 +47,6 @@ abstract class UnaryPrintable(val name: String, _p: => Printable) extends Printa
        |${p.printNode}""".stripMargin('|')
 }
 
-// we might run into problems with defining nodes multiple times, let's see.
 abstract class BinaryPrintable(val name: String, p: Printable, q: Printable) extends Printable {
   def printNode =
     s"""  ${id} [shape=none, fontsize=8, fontname=mono, label=<$table>];

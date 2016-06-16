@@ -9,8 +9,8 @@ package fcd
  *   Parsing with First-Class Derivatives
  *   Submitted to OOPSLA 2016.
  *
- * Section 4 introduces the implementation of our parser combinator library.
- * In addition to repeating the examples from the paper in this file we explain
+ * Section 4 introduces the implementation of our parser combinator library. In
+ * addition to repeating the few examples from the paper in this file we explain
  * the relation between the implementation in the paper and in the artifact.
  *
  * As described in the paper, the core of the implementation builds on
@@ -79,7 +79,7 @@ trait Section4 extends ParserUsage {
     lazy val exotic: Parser[Any] = nonterminal(exotic << 'a')
 
     // We introduce the nonterminal parser combinator to allow for left-recursive
-    // grammars. Thus, it might be interesting to also inspect the tests in
+    // grammars. Thus, it might be instructive to also inspect the tests in
     // `test/scala/LeftrecTests.scala`.
   }
 

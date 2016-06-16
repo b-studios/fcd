@@ -174,11 +174,21 @@ trait Section5 extends ParserUsage { self: Section3 =>
     // - mixed content
     // - retroactive spacing
     // - tables
+    //
+    // This allows parsing of words like
+    //
+    //   +----+
+    //   |aa  |
+    //   |~~~ |
+    //   |(())|
+    //   |~~~ |
+    //   |aaaa|
+    //   +----+
     lazy val combined: NT[Any]    = inText(asAndTables, spaced(parens))
     lazy val asAndTables: NT[Any] = as | table(combined)
 
-    // Again, examples of words that are recognized by `combined` can be found
-    // in `DerivativeParsersTests.scala`.
+    // Again, some more examples of words that are recognized by `combined` can
+    // be found in `DerivativeParsersTests.scala`.
   }
 
 }

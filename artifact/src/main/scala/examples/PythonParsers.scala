@@ -65,8 +65,6 @@ trait PythonLexemes { self: Parsers with DerivedOps with Syntax =>
   case object NL extends Lexeme
   case object WS extends Lexeme // whitespace
   case class Comment(content: String) extends Lexeme
-
-  // this is orthogonal to python parsing
   case object EOS extends Lexeme
 
   type Elem = Lexeme
@@ -97,8 +95,6 @@ trait PythonLexemes { self: Parsers with DerivedOps with Syntax =>
 }
 
 trait PythonParsers extends PythonLexemes { self: Parsers with Syntax with DerivedOps =>
-
-  val ??? = Id("A")
 
   // general toolbox
   def no(els: Elem*): Parser[Elem] = acceptIf(el => !(els contains el))

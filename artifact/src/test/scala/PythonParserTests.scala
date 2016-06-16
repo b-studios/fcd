@@ -9,23 +9,6 @@ class PythonParserTests extends FunSpec with Matchers {
   val parsers = PythonParsers
   import parsers._
 
-  // TODO currently just inlined. Fix modularity of this implementation!
-  implicit class ParserTests[T, P <% Parser[T]](p: => P) {
-    def shouldParse[ES <% Iterable[Elem]](s: ES, tags: Tag*) =
-      it (s"""should parse "$s" """, tags:_*) {
-        accepts(p, s) shouldBe true
-      }
-    def shouldNotParse[ES <% Iterable[Elem]](s: ES, tags: Tag*) =
-      it (s"""should not parse "$s" """, tags:_*) {
-        accepts(p, s) shouldBe false
-      }
-    // for unambiguous parses
-    def shouldParseWith[ES <% Iterable[Elem]](s: ES, result: T) =
-      it (s"""should parse "$s" with correct result""") {
-        parse(p, s) shouldBe List(result)
-      }
-  }
-
   describe ("indented python parser (lexeme based)") {
     indented(many(many(Id("A")) <~ NL)) shouldParseWith (
       List(WS, WS, Id("A"), Id("A"), NL,
@@ -186,5 +169,22 @@ class PythonParserTests extends FunSpec with Matchers {
 
     preprocess(file_input) shouldParse traceProg2
 
+  }
+
+  // Helpers to allow writing more concise tests.
+  private implicit class ParserTests[T, P <% Parser[T]](p: => P) {
+    def shouldParse[ES <% Iterable[Elem]](s: ES, tags: Tag*) =
+      it (s"""should parse "$s" """, tags:_*) {
+        accepts(p, s) shouldBe true
+      }
+    def shouldNotParse[ES <% Iterable[Elem]](s: ES, tags: Tag*) =
+      it (s"""should not parse "$s" """, tags:_*) {
+        accepts(p, s) shouldBe false
+      }
+    // for unambiguous parses
+    def shouldParseWith[ES <% Iterable[Elem]](s: ES, result: T) =
+      it (s"""should parse "$s" with correct result""") {
+        parse(p, s) shouldBe List(result)
+      }
   }
 }

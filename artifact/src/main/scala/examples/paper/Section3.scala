@@ -99,6 +99,10 @@ trait Section3 extends ParserUsage {
     // inferred by annotating a different type.
     //
     // Try removing `nonterminal` from the implementation of `number`.
+    //
+    // When attempting to evaluate `number` you will observe a stack overflow,
+    // which is a common pitfall.
+    //
     // Then try to change `number: Parser[Int]` to `number: NT[Int]`.
     //
     // The implicit conversions that wrap the production into `nonterminal`
