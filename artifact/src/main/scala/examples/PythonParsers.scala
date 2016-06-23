@@ -123,16 +123,23 @@ trait PythonParsers extends PythonLexemes { self: Parsers with Syntax with Deriv
   // def until()
 
   // combinator that only passes the selected lexemes to p
-  def filter[T](pred: Elem => Boolean): Parser[T] => Parser[T] = p => {
-    val include = some(acceptIf(pred))
-    val exclude = some(acceptIf(c => !pred(c)))
+  // def filter[T](pred: Elem => Boolean): Parser[T] => Parser[T] = p => {
+  //   val include = some(acceptIf(pred))
+  //   val exclude = some(acceptIf(c => !pred(c)))
 
+  //   lazy val filtered: NT[T] =
+  //     ( done(p)
+  //     | (include &> delegate(p)) >> { pp =>
+  //         (exclude ~> filter(pred)(pp)) | done(pp)
+  //       }
+  //     | exclude ~> filtered
+  //     )
+  //   filtered
+  // }
+  def filter[T](pred: Elem => Boolean): Parser[T] => Parser[T] = { p =>
     lazy val filtered: NT[T] =
       ( done(p)
-      | (include &> delegate(p)) >> { pp =>
-          (exclude ~> filter(pred)(pp)) | done(pp)
-        }
-      | exclude ~> filtered
+      | eat { el => if (pred(el)) filter(pred)(p << el) else filtered }
       )
     filtered
   }
