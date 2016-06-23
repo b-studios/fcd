@@ -118,7 +118,7 @@ class PythonParserTests extends FunSpec with Matchers {
         'class, WS, Id("Trace"), "(", Id("object"), ")", ":", NL,
         WS, WS, WS, WS, 'def, WS, Id("__init__"), "(", Id("self"), ")", ":", NL,
         WS, WS, WS, WS, WS, WS, WS, WS, Id("self"), ".", Id("f"), WS, "=", WS, Id("f"), NL,
-        WS, WS, WS, WS, WS, WS, NL,
+        WS, WS, WS, WS, NL,
         WS, WS, WS, WS, WS, WS, 'def, WS, Id("__call__"), "(", Id("self"), WS, ",", "*", Id("args"), ",", WS, "**", Id("kwargs"), ")", ":", NL,
         WS, WS, WS, WS, WS, WS, WS, WS, Id("print"), "(", Str("entering function "), WS, "+", WS, Id("self"), ".",  Id("f"), ".", Id("__name__"), ")", NL,
         WS, WS, WS, WS, WS, WS, WS, WS, Id("i"), "=", Num("0"), NL,
@@ -145,7 +145,23 @@ class PythonParserTests extends FunSpec with Matchers {
     test shouldParse List[Lexeme](Id("f"), "(", Id("args"), ",", WS, Id("kwargs"), ")")
     test shouldParse List[Lexeme](Id("f"), "(", "*", Id("args"), ",", WS, "**", Id("kwargs"), ")")
 
-    preprocess(file_input) shouldParse traceProg
+    test shouldParse List[Lexeme](Id("print"), "(", Str("entering function "), WS, "+", WS, Id("self"), ".",  Id("f"), ".", Id("__name__"), ")")
+
+    // TODO is already ambiguous
+    // (stmt parse List[Lexeme](Id("self"), ".", Id("f"), WS, "=", WS, Id("f"), NL)).size shouldBe 1
+
+    // preprocess(file_input) shouldParse traceProg
+
+    // (stmt parse List[Lexeme](
+    //     'for, WS, Id("arg"), WS, 'in, WS, Id("args"), ":", NL,
+    //     WS, WS, Id("print"), NL)).size shouldBe 1
+
+    stmt shouldNotParse List[Lexeme](
+        'def, WS, Id("__call__"), "(", Id("self"), WS, ",", "*", Id("args"), ",", WS, "**", Id("kwargs"), ")", ":", NL,
+        WS, WS, 'for, WS, Id("arg"), WS, 'in, WS, Id("args"), ":", NL,
+        WS, WS, WS, WS, Id("print"), NL,
+        // this line is indented too far
+        WS, WS, WS, WS, WS, WS, Id("print"), NL)
 
     // with empty lines
     val traceProg2 = List[Lexeme](
@@ -155,20 +171,99 @@ class PythonParserTests extends FunSpec with Matchers {
         WS, WS, WS, WS, 'def, WS, Id("__init__"), "(", Id("self"), ")", ":", NL,
         WS, WS, WS, WS, WS, WS, WS, WS, Id("self"), ".", Id("f"), WS, "=", WS, Id("f"), NL,
         NL,
-        WS, WS, WS, WS, WS, WS, 'def, WS, Id("__call__"), "(", Id("self"), WS, ",", "*", Id("args"), ",", WS, "**", Id("kwargs"), ")", ":", NL,
+        WS, WS, WS, WS, 'def, WS, Id("__call__"), "(", Id("self"), WS, ",", "*", Id("args"), ",", WS, "**", Id("kwargs"), ")", ":", NL,
         WS, WS, WS, WS, WS, WS, WS, WS, Id("print"), "(", Str("entering function "), WS, "+", WS, Id("self"), ".",  Id("f"), ".", Id("__name__"), ")", NL,
         WS, WS, WS, WS, WS, WS, WS, WS, Id("i"), "=", Num("0"), NL,
         WS, WS, WS, WS, WS, WS, WS, WS, 'for, WS, Id("arg"), WS, 'in, WS, Id("args"), ":", NL,
-        WS, WS, WS, WS, WS, WS, WS, WS, WS, WS, WS, WS, Id("print"), "(", Str("arg {0}: {1}"), ".", Id("format"), "(", Id("i"), ",", Id("arg"), ")", ")", NL,
-        WS, WS, WS, WS, WS, WS, WS, WS, WS, WS, WS, WS, Id("i"), "=", Id("i"), "+", Num("1"), NL,
+        WS, WS, WS, WS, WS, WS, WS, WS, WS, WS, Id("print"), "(", Str("arg {0}: {1}"), ".", Id("format"), "(", Id("i"), ",", Id("arg"), ")", ")", NL,
+        WS, WS, WS, WS, WS, WS, WS, WS, WS, WS, Id("i"), "=", Id("i"), "+", Num("1"), NL,
         WS, WS, NL,
+        NL,
+        NL,
         NL,
         WS, WS, WS, WS, WS, WS, WS, WS, 'return, WS, Id("self"), ".", Id("f"), "(", "*", Id("args"), ",", WS, "**", Id("kwargs"), ")", NL,
         EOS
     )
 
     preprocess(file_input) shouldParse traceProg2
+    (preprocess(file_input) parse traceProg2).size shouldBe 1
 
+    // suite should parse this:
+    val dummyin = List[Lexeme](NL,
+        WS, 'def, WS, Id("f"), "(", ")", ":", NL,
+        WS, WS, 'def, WS, Id("f"), "(", ")", ":", NL,
+        WS, WS,   WS, Id("print"), NL,
+        WS, WS,   WS, Id("print"), NL,
+        WS, WS,   WS, Id("i"), NL)
+
+    //println((suite parse dummyin) mkString "\n\n")
+
+    stmt shouldNotParse List[Lexeme](WS, WS, WS, Id("i"), NL)
+    atom shouldNotParse List[Lexeme](WS, WS, WS, Id("i"))
+
+    // This is the skeleton of the python parsers (and it is unambiguous)
+    lazy val aStmt: NT[Any] = aSimpleStmt | 'def ~> aBlock
+    lazy val aSimpleStmt = a <~ NL
+    lazy val aBlock = aSimpleStmt | NL ~> indented(some(many(emptyLine) ~> aStmt))
+    lazy val aInput: NT[Any] = NL.* ~> many(aStmt <~ NL.*) <~ EOS
+
+    val dummyin2 = List[Lexeme](
+        'def, NL,
+        WS, a, NL,
+        WS, a, NL,
+        WS, 'def, NL,
+        WS, WS, a, NL,
+        WS, WS, a, NL,
+        WS, WS, a, NL,
+        NL,
+        'def, NL,
+        WS, a, NL,
+        WS, a, NL,
+        WS, 'def, NL,
+        WS, WS,WS,WS,WS,WS, a, NL,
+        WS, WS,WS,WS,WS,WS, a, NL,
+        WS, WS,WS,WS,WS,WS, a, NL,
+        EOS)
+
+    aInput shouldParse List[Lexeme](
+      'def, NL,
+      WS, WS, a, NL,
+      WS, WS, a, NL,
+      EOS
+    )
+
+    aInput shouldNotParse List[Lexeme](
+      'def, NL,
+      WS, WS, a, NL,
+      WS, a, NL,
+      EOS
+    )
+
+    aInput shouldParse List[Lexeme](
+      'def, NL,
+      WS, WS, a, NL,
+      NL,
+      WS, WS, a, NL,
+      EOS
+    )
+
+    aInput shouldNotParse List[Lexeme](
+      'def, NL,
+      WS, WS, a, NL,
+      NL,
+      WS, a, NL,
+      EOS
+    )
+
+    indentBy(2)(collect) shouldParseWith (
+      List[Lexeme](WS, WS, a, NL),
+      List[Lexeme](a, NL))
+
+    indentBy(2)(collect) shouldParseWith (
+      List[Lexeme](WS, WS, NL, NL, WS, WS, a, NL),
+      List[Lexeme](NL, NL, a, NL))
+
+    (aInput parse dummyin2).size shouldBe 1
   }
 
   // Helpers to allow writing more concise tests.

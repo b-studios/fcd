@@ -94,7 +94,7 @@ trait PythonLexemes { self: Parsers with DerivedOps with Syntax =>
   def isNL: Lexeme => Boolean = _ == NL
 }
 
-trait PythonParsers extends PythonLexemes { self: Parsers with Syntax with DerivedOps =>
+trait PythonParsers extends PythonLexemes with PythonAst { self: Parsers with Syntax with DerivedOps =>
 
   // general toolbox
   def no(els: Elem*): Parser[Elem] = acceptIf(el => !(els contains el))
@@ -187,14 +187,14 @@ trait PythonParsers extends PythonLexemes { self: Parsers with Syntax with Deriv
 
   val line      = many(no(NL)) ~ NL
   val emptyLine = many(WS) ~ NL
-  def indentBy[T](n: Int): Parser[T] => Parser[T] = p =>
-    // p is successful
-    ( done(p)
+  def indentBy[T](n: Int): Parser[T] => Parser[T] = repeat[T] { p =>
     // pass empty lines as NL to p
-    | emptyLine >> { _ => indentBy(n)(p << NL) }
+    ( emptyLine ^^ { _ => p << NL }
     // first consume `n` spaces, then delegate to p
-    | manyN(n, space) ~> (line &> delegate(p)) >> indentBy(n)
+    // here we intersect with not(emptyLine) to prevent ambiguities
+    | manyN(n, WS) ~> (not(emptyLine) &> line &> delegate(p))
     )
+  }
 
   def indented[T](p: Parser[T]): Parser[T] = consumed(some(WS)) >> { case s =>
     // this simulates lookahead for greedy matching
@@ -204,74 +204,85 @@ trait PythonParsers extends PythonLexemes { self: Parsers with Syntax with Deriv
   def preprocess[T] = stripComments[T] compose explicitJoin[T] compose implicitJoin[T]
 
 
+  def binOp[T, S](p: Parser[T], op: Parser[S], f: (T, S, T) => T): Parser[T] = {
+    lazy val ps: Parser[T] = nonterminal((p ␣ op ␣ ps) ^^ { case l ~ op ~ r => f(l, op, r) } | p)
+    ps
+  }
+
   // --- Space Helpers ---
 
   lazy val whitespace = WS
   lazy val linebreak = NL
   lazy val space = whitespace | linebreak
-  lazy val spaces = some(space)
-  lazy val spacesNoNl = some(whitespace)
+  lazy val spaces = many(whitespace)
 
   implicit class SpaceHelpers[T, P <% Parser[T]](p: P) {
     def ␣[U](q: => Parser[U]): Parser[T ~ U] =
-      p ~ (many(whitespace) ~> q)
+      p ~ (spaces ~> q)
     def <␣[U](q: => Parser[U]): Parser[T] =
-      p <~ (many(whitespace) ~ q)
+      p <~ (spaces ~ q)
     def ␣>[U](q: => Parser[U]): Parser[U] =
-      p ~> (many(whitespace) ~> q)
+      p ~> (spaces ~> q)
   }
   def listOf[T](p: Parser[T], sep: Parser[Any]): Parser[List[T]] =
-    someSep(p, many(space) ~ sep ~ many(space)) <~ opt(many(whitespace) ~ sep)
+    someSep(p, spaces ~ sep ~ spaces) <~ opt(spaces ~ sep)
 
+  def optList[T](p: Parser[List[T]]) = p | succeed(Nil)
+
+  def spacedOpt[T](p: Parser[T]) = opt(spaces ~> p)
+  def spacedMany[T](p: Parser[T]) = many(spaces ~> p)
 
   // --- Python Grammar ---
   // see: https://docs.python.org/3.5/reference/grammar.html
-  lazy val file_input: NT[Any] = NL.* ~> many(stmt <~ NL.*) <~ EOS
+  lazy val file_input: NT[Program] = emptyLine.* ~> many(stmt <~ emptyLine.*) <~ EOS ^^ Program
 
-  lazy val decorator: Parser[Any]  = "@" ~> dotted_name ~ opt("(" ~> opt(arglist) <~ ")") <~ NL
-  lazy val decorators: Parser[Any] = some(decorator)
-  lazy val decorated: Parser[Any]  = decorators ~ (classdef | funcdef | async_funcdef)
+  lazy val decorator: Parser[Decorator]  =
+    "@" ~> dotted_name ~ ("(" ~> optArgs <~ ")" | succeed(Nil)) <~ NL ^^ Decorator
+  lazy val decorators: Parser[List[Decorator]] = some(decorator)
+  lazy val decorated: Parser[Decorated]  =
+    decorators ~ (classdef | funcdef | async_funcdef) ^^ Decorated
 
 
   // --- Functions ---
-  lazy val async_funcdef: Parser[Any] = 'async ␣ funcdef
-  lazy val funcdef: Parser[Any] =
-    'def ␣> (id ␣ parameters ␣ opt("->" ␣> test)) ␣ (":" ␣> suite)
+  lazy val async_funcdef: Parser[FuncDef] = 'async ␣> funcdef
+  lazy val funcdef: Parser[FuncDef] =
+    'def ␣> (id ␣ parameters ~ spacedOpt("->" ␣> test)) ␣ (":" ␣> suite) ^^ FuncDef
 
-  lazy val parameters: Parser[Any] = "(" ␣> opt(typedargslist) <␣ ")"
+  lazy val parameters: Parser[Any] = "(" ~> spacedOpt(typedargslist) <␣ ")"
 
 
   // ['*' [tfpdef] (',' tfpdef ['=' test])* [',' '**' tfpdef] | '**' tfpdef]
   def fpdef(p: Parser[Any]): Parser[Any] =
-    ( "*"  ␣ opt(p)
-           ␣ opt("," ␣> testdefs(p))
-           ␣ opt("," ␣> ("**" ␣ p))
+    ( "*"  ~ spacedOpt(p)
+           ~ spacedOpt("," ␣> testdefs(p))
+           ~ spacedOpt("," ␣> ("**" ␣ p))
     | "**" ␣ p
     )
-  def testdefs(p: Parser[Any]): Parser[Any] = someSep(p ␣ opt("=" ␣> test), ",")
+  def testdefs(p: Parser[Any]): Parser[Any] = someSep(p ~ spacedOpt("=" ␣> test), ",")
 
   lazy val typedargslist: Parser[Any] =
-    testdefs(tfpdef) ␣ opt("," ␣> fpdef(tfpdef)) | fpdef(tfpdef)
+    testdefs(tfpdef) ~ spacedOpt("," ␣> fpdef(tfpdef)) | fpdef(tfpdef)
 
   lazy val varargslist: Parser[Any] =
-    testdefs(vfpdef) ␣ opt("," ␣> fpdef(vfpdef)) | fpdef(vfpdef)
+    testdefs(vfpdef) ~ spacedOpt("," ␣> fpdef(vfpdef)) | fpdef(vfpdef)
 
-  lazy val tfpdef: Parser[Any] = id ␣ opt(":" ␣> test)
+  lazy val tfpdef: Parser[Any] = id ~ spacedOpt(":" ␣> test)
   lazy val vfpdef: Parser[Any] = id
 
   // --- Statements ---
   lazy val stmt: NT[Any]            = simple_stmt | compound_stmt
-  lazy val simple_stmt: Parser[Any] = listOf(small_stmt, ";") <␣ NL
+  lazy val simple_stmt: Parser[Any] = listOf(small_stmt, ";") <␣ NL ^^ Simple
   lazy val small_stmt: Parser[Any]  =
-    ( expr_stmt   | expr_stmt     | del_stmt
+    ( expr_stmt   | del_stmt
     | pass_stmt   | flow_stmt     | import_stmt
     | global_stmt | nonlocal_stmt | assert_stmt
     )
 
   lazy val expr_stmt: Parser[Any] =
-    testlist_star_expr ␣ ( augassign ␣ ( yield_expr | testlist )
-                         | many("=" ␣ ( yield_expr | testlist_star_expr ))
-                         )
+    ( testlist_star_expr
+    | testlist_star_expr ␣ augassign ␣ ( yield_expr | testlist )
+    | testlist_star_expr ~ some(spaces ~> "=" ␣> ( yield_expr | testlist_star_expr ))
+    ) ^^ ExprStmt
 
   lazy val testlist_star_expr: Parser[Any] = listOf(test | star_expr, ",")
 
@@ -279,66 +290,72 @@ trait PythonParsers extends PythonLexemes { self: Parsers with Syntax with Deriv
                                      | "&=" | "|=" | "^=" | "<<=" | ">>=" | "**="
                                      | "//="
                                      )
-  lazy val del_stmt: Parser[Any]      = 'del ~> exprlist
-  lazy val pass_stmt: Parser[Any]     = 'pass
-  lazy val flow_stmt: Parser[Any]     = break_stmt | continue_stmt | return_stmt | raise_stmt | yield_stmt
-  lazy val break_stmt: Parser[Any]    = 'break
-  lazy val continue_stmt: Parser[Any] = 'continue
-  lazy val return_stmt: Parser[Any]   = 'return ␣> opt(testlist)
-  lazy val yield_stmt: Parser[Any]    = yield_expr
-  lazy val raise_stmt: Parser[Any]    = 'raise ␣> opt( test ␣ opt('from ␣ test))
-  lazy val import_stmt: Parser[Any]   = import_name | import_from
-  lazy val import_name: Parser[Any]   = 'import ␣> dotted_as_names
+  lazy val del_stmt: Parser[Stmt]      = 'del ␣> exprlist ^^ Del
+  lazy val pass_stmt: Parser[Stmt]     = 'pass ^^^ Pass
+  lazy val flow_stmt: Parser[Stmt]     = break_stmt | continue_stmt | return_stmt | raise_stmt | yield_stmt
+  lazy val break_stmt: Parser[Stmt]    = 'break ^^^ Break
+  lazy val continue_stmt: Parser[Stmt] = 'continue ^^^ Continue
+  lazy val return_stmt: Parser[Stmt]   = 'return ~> spacedOpt(testlist) ^^ Return
+  lazy val yield_stmt: Parser[Stmt]    = yield_expr ^^ ExprStmt
+  lazy val raise_stmt: Parser[Stmt]    = 'raise ~> spacedOpt(test ~ spacedOpt('from ␣ test)) ^^ Raise
+  lazy val import_stmt: Parser[Any]    = import_name | import_from
+  lazy val import_name: Parser[Any]    = 'import ␣> dotted_as_names ^^ { n => Import(n) }
 
   // # note below: the ('.' | '...') is necessary because '...' is tokenized as ELLIPSIS
   lazy val import_from: Parser[Any] =
-    ('from   ␣ (many("." | "...") ␣ dotted_name | some("." | "...")) ␣
-     'import ␣ ("*" | "(" ␣> import_as_names <␣ ")" | import_as_names))
+    ('from   ~> (spacedMany("." | "...") ~ dotted_name | some("." | "...")) ␣
+     'import ␣> ("*" | "(" ␣> import_as_names <␣ ")" | import_as_names)) ^^ {
+        case (from, names) => Import(names, Some(from))
+    }
 
-  lazy val import_as_name: Parser[Any]  = id ␣ opt('as ␣ id)
-  lazy val dotted_as_name: Parser[Any]  = dotted_name ␣ opt('as ␣ id)
+  lazy val import_as_name: Parser[Any]  = id ~ spacedOpt('as ␣ id)
+  lazy val dotted_as_name: Parser[Any]  = dotted_name ~ spacedOpt('as ␣ id)
   lazy val import_as_names: Parser[Any] = listOf(test | import_as_name, ",")
   lazy val dotted_as_names: Parser[Any] = someSep(dotted_as_name, ",")
   lazy val dotted_name: Parser[Any]     = someSep(id, ".")
-  lazy val global_stmt: Parser[Any]     = 'global ␣> someSep(id, ",")
-  lazy val nonlocal_stmt: Parser[Any]   = 'nonlocal ␣> someSep(id, ",")
-  lazy val assert_stmt: Parser[Any]     = 'assert ␣> someSep(test, ",")
+
+  lazy val global_stmt: Parser[Any]     = 'global ␣> someSep(id, ",") ^^ Global
+  lazy val nonlocal_stmt: Parser[Any]   = 'nonlocal ␣> someSep(id, ",") ^^ Nonlocal
+  lazy val assert_stmt: Parser[Any]     = 'assert ␣> someSep(test, ",") ^^ Assert
 
 
   lazy val compound_stmt: Parser[Any] =
     if_stmt | while_stmt | for_stmt | try_stmt | with_stmt | funcdef | classdef | decorated | async_stmt
   lazy val async_stmt: Parser[Any] = 'async ␣> (funcdef | with_stmt | for_stmt)
   lazy val if_stmt: Parser[Any]    =
-    'if ␣> test ␣ (":" ␣> suite ␣ many('elif ␣> test ␣ (":" ␣> suite)) ␣ opt(('else ␣ ":") ␣> suite))
+    'if ␣> test ␣ (":" ␣> suite ~
+      spacedMany('elif ␣> test ␣ (":" ␣> suite)) ~
+      spacedOpt(('else ␣ ":") ␣> suite))
   lazy val while_stmt: Parser[Any] =
-    'while ␣> test ␣ (":" ␣> suite ␣ opt(('else ␣ ":") ␣> suite))
+    'while ␣> test ␣ (":" ␣> suite ~ spacedOpt(('else ␣ ":") ␣> suite))
   lazy val for_stmt: Parser[Any] =
-    'for ␣> exprlist ␣ ('in ␣> testlist ␣ (":" ␣> suite ␣ opt(('else ␣ ":") ␣> suite)))
+    'for ␣> exprlist ␣ ('in ␣> testlist ␣ (":" ␣> suite ~ spacedOpt(('else ␣> ":") ␣> suite))) ^^ {
+      case (exprs ~ (tests ~ (body ~ default))) => For(exprs, tests, body, default)
+    }
   lazy val try_stmt: Parser[Any] =
-    ('try ␣ ":") ␣> suite ␣ (some(except_clause ␣ (":" ␣> suite)) ␣
-                               opt(('else ␣ ":")    ␣> suite) ␣
-                               opt(('finally ␣ ":") ␣> suite)
+    ('try ␣ ":") ␣> suite ␣ (some(except_clause ␣ (":" ␣> suite)) ~
+                               spacedOpt(('else ␣ ":")    ␣> suite) ~
+                               spacedOpt(('finally ␣ ":") ␣> suite)
                             | (('finally ␣ ":")     ␣> suite)
                             )
   lazy val with_stmt: Parser[Any] = 'with ␣> someSep(with_item, ",") ␣ (":" ␣> suite)
-  lazy val with_item: Parser[Any] = test ␣ opt('as ␣> expr)
+  lazy val with_item: Parser[Any] = test ~ spacedOpt('as ␣> expr)
 
   // # NB compile.c makes sure that the default except clause is last
-  lazy val except_clause: Parser[Any] = 'except ␣> opt(test ␣ opt('as ␣> id))
+  lazy val except_clause: Parser[Any] = 'except ~> spacedOpt(test ␣ opt('as ␣> id))
 
 
   // INDENTATION
   // changed to also allow empty lines
-  lazy val suite: Parser[Any] = simple_stmt | NL ␣> indented(NL.* ~> some(stmt <~ NL.*))
-
+  lazy val suite: Parser[Any] = simple_stmt |  NL ~> indented(some(many(emptyLine) ~> stmt))
 
   // --- Expressions ---
-  lazy val test: NT[Any]           = ( or_test ␣ opt('if ␣> or_test ␣ ('else ␣> test))
-                                         | lambdef
-                                         )
+  lazy val test: NT[Any]           = ( or_test ~ spacedOpt('if ␣> or_test ␣ ('else ␣> test))
+                                     | lambdef
+                                     )
   lazy val test_nocond: NT[Any]    = or_test | lambdef_nocond
-  lazy val lambdef: NT[Any]        = 'lambda ␣> opt(varargslist) ␣ (":" ␣> test)
-  lazy val lambdef_nocond: NT[Any] = 'lambda ␣> opt(varargslist) ␣ (":" ␣> test_nocond)
+  lazy val lambdef: NT[Any]        = 'lambda ~> spacedOpt(varargslist) ␣ (":" ␣> test)
+  lazy val lambdef_nocond: NT[Any] = 'lambda ~> spacedOpt(varargslist) ␣ (":" ␣> test_nocond)
   lazy val or_test: NT[Any]        = someSep(and_test, 'or)
   lazy val and_test: NT[Any]       = someSep(not_test, 'and)
   lazy val not_test: NT[Any]       = 'not ␣> not_test | comparison
@@ -349,38 +366,38 @@ trait PythonParsers extends PythonLexemes { self: Parsers with Syntax with Deriv
                                   |'in | 'not ␣ 'in | 'is | 'is ␣ 'not
                                   )
 
-  lazy val expr: NT[Any]       = someSep(xor_expr, "|")
-  lazy val xor_expr: NT[Any]   = someSep(and_expr, "^")
-  lazy val and_expr: NT[Any]   = someSep(shift_expr, "&")
-  lazy val shift_expr: NT[Any] = someSep(arith_expr, "<<" | ">>")
-  lazy val arith_expr: NT[Any] = someSep(term, "+" | "-")
-  lazy val term: NT[Any]       = someSep(factor, "*" | "@" | "/" | "%" | "//")
+  lazy val expr: NT[Any]       = binOp(xor_expr, "|", BinOp)
+  lazy val xor_expr: NT[Any]   = binOp(and_expr, "^", BinOp)
+  lazy val and_expr: NT[Any]   = binOp(shift_expr, "&", BinOp)
+  lazy val shift_expr: NT[Any] = binOp(arith_expr, "<<" | ">>", BinOp)
+  lazy val arith_expr: NT[Any] = binOp(term, "+" | "-", BinOp)
+  lazy val term: NT[Any]       = binOp(factor, "*" | "@" | "/" | "%" | "//", BinOp)
   lazy val factor: NT[Any]     = ("+" | "-" | "~") ␣ factor | power
   lazy val power: NT[Any]      = atom_expr | atom_expr ␣ "**" ␣ factor
 
-  lazy val atom_expr: Parser[Any]  = opt('await) ␣ atom ␣ many(trailer)
+  lazy val atom_expr: Parser[Any]  = opt('await ~ spaces) ~> atom ~ spacedMany(trailer)
   lazy val atom: Parser[Any] = ( "(" ␣> ( yield_expr | testlist_comp) <␣ ")"
-                               | "[" ␣> opt(testlist_comp)  <␣ "]"
-                               | "{" ␣> opt(dictorsetmaker) <␣ "}"
+                               | "[" ~> spacedOpt(testlist_comp)  <␣ "]"
+                               | "{" ~> spacedOpt(dictorsetmaker) <␣ "}"
                                | id | number | some(string) | "..."
                                | 'None | 'True | 'False
                                )
 
 
   lazy val star_expr: Parser[Any] = "*" ␣ expr
-  lazy val yield_expr: Parser[Any] = 'yield ␣ opt('from ␣ test | testlist)
+  lazy val yield_expr: Parser[Any] = 'yield ~ spacedOpt('from ␣ test | testlist)
 
   lazy val testlist_comp: Parser[Any] = ( listOf(test | star_expr, ",")
                                         | (test | star_expr) ␣ comp_for
                                         )
 
-  lazy val trailer: Parser[Any] = ( "(" ␣> opt(arglist)  <␣ ")"
+  lazy val trailer: Parser[Any] = ( "(" ␣> optArgs  <␣ ")"
                                   | "[" ␣> subscriptlist <␣ "]"
                                   | "." ␣> id
                                   )
   lazy val subscriptlist: Parser[Any] = listOf(subscript, ",")
-  lazy val subscript: Parser[Any] = test | opt(test) ␣ ":" ␣ opt(test) ␣ opt(":" ␣> opt(test))
-  lazy val exprlist: Parser[Any] = listOf(expr | star_expr, ",")
+  lazy val subscript: Parser[Any] = test | spacedOpt(test) ~ ":" ~ spacedOpt(test) ~ spacedOpt(":" ~> spacedOpt(test))
+  lazy val exprlist: Parser[List[Any]] = listOf(expr | star_expr, ",")
   lazy val testlist: Parser[Any] = listOf(test, ",")
 
   lazy val dictorsetmaker: Parser[Any] =
@@ -394,21 +411,21 @@ trait PythonParsers extends PythonLexemes { self: Parsers with Syntax with Deriv
 
 
   lazy val classdef: Parser[Any] =
-    'class ␣> (id ␣ opt( "(" ␣> opt(arglist) <␣ ")" )) ␣ (":" ␣> suite)
+    'class ␣> (id ~ spacedOpt("(" ␣> optArgs <␣ ")" )) ␣ (":" ␣> suite)
 
-  lazy val arglist: Parser[Any] = listOf(argument, ",")
-
+  lazy val arglist: Parser[List[Any]] = listOf(argument, ",")
+  lazy val optArgs: Parser[List[Any]] = arglist | succeed(Nil)
 
   lazy val argument: Parser[Any] =
-    ( test ␣ opt(comp_for)
+    ( test ~ spacedOpt(comp_for)
     | test ␣ "=" ␣ test
     | "**" ␣ test
     | "*" ␣ test
     )
 
   lazy val comp_iter: NT[Any]   = comp_for | comp_if
-  lazy val comp_for: NT[Any]    = 'for ␣> exprlist ␣ ('in ␣> or_test ␣ opt(comp_iter))
-  lazy val comp_if: Parser[Any] = 'if ␣> test_nocond ␣ opt(comp_iter)
+  lazy val comp_for: NT[Any]    = 'for ␣> exprlist ␣ ('in ␣> or_test ~ spacedOpt(comp_iter))
+  lazy val comp_if: Parser[Any] = 'if ␣> test_nocond ~ spacedOpt(comp_iter)
 
 }
 
