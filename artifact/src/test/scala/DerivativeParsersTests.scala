@@ -429,4 +429,30 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
 
   }
 
+  describe("greedy repitition") {
+
+    it ("should return only the result of the longest match") {
+      greedySome(some('a')) parse "a"   shouldBe List(List(List('a')))
+      greedySome(some('a')) parse "aaa" shouldBe List(List(List('a', 'a', 'a')))
+    }
+
+    it ("should also return longest match if other parser succeeded first") {
+      lazy val p = some("ab") | some("a") | some("b")
+      greedySome(p) parse "ab" shouldBe List(List(List("ab")))
+      greedySome(p) parse "abab" shouldBe List(List(List("ab", "ab")))
+      greedySome(p) parse "abbab" shouldBe List(List(List("ab"), List("b"), List("ab")))
+      greedySome(p) parse "abbaab" shouldBe List(List(List("ab"), List("b"), List("a", "a"), List("b")))
+      greedySome(p) parse "aaaab" shouldBe List(List(List("a", "a", "a", "a"), List("b")))
+
+      lazy val q = "ab" | "a" | "b"
+      greedySome(q) parse "ab" shouldBe List(List("ab"))
+      greedySome(q) parse "abab" shouldBe List(List("ab", "ab"))
+      greedySome(q) parse "abbab" shouldBe List(List("ab", "b", "ab"))
+      greedySome(q) parse "abbaab" shouldBe List(List("ab", "b", "a", "ab"))
+      greedySome(q) parse "aaaab" shouldBe List(List("a", "a", "a", "ab"))
+
+    }
+
+  }
+
 }

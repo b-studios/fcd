@@ -196,10 +196,8 @@ trait PythonParsers extends PythonLexemes with PythonAst { self: Parsers with Sy
     )
   }
 
-  def indented[T](p: Parser[T]): Parser[T] = consumed(some(WS)) >> { case s =>
-    // this simulates lookahead for greedy matching
-    no(WS) >> { c => indentBy(s.size)(p) <<< s << c }
-  }
+  def indented[T](p: Parser[T]): Parser[T] =
+    consumed(greedySome(WS)) >> { s => indentBy(s.size)(p) <<< s }
 
   def preprocess[T] = stripComments[T] compose explicitJoin[T] compose implicitJoin[T]
 

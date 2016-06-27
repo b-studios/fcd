@@ -113,4 +113,29 @@ trait DerivedOps { self: Parsers with Syntax =>
 
   def rightDerivative[R](p: Parser[R], elems: Seq[Elem]): Parser[R] =
     done(p <<< elems) | eat { c => rightDerivative(p << c, elems) }
+
+
+  // Greedy repitition
+  private class Greedy[T](p: Parser[T]) {
+      private def gs(curr: Parser[T]): Parser[List[T]] =
+        // Either we are done and return a singleton list or we can process
+        // another token.
+        done(curr) ^^ { r => List(r) } | eat { el =>
+          lazy val next = curr << el
+          ( gs(next)
+            // The remainder may only be processed with greedyMany if no
+            // prefix may be recognized by `next`.
+          | done(curr) ~ (not(next ~ always(())) &> (many << el)) ^^ {
+              case fst ~ rst => fst :: rst
+            }
+          )
+        }
+
+      lazy val some: NT[List[T]] = gs(p)
+      lazy val many: NT[List[T]] = some | succeed(Nil)
+    }
+
+    def greedySome[T](p: Parser[T]): Parser[List[T]] = new Greedy(p).some
+    def greedyMany[T](p: Parser[T]): Parser[List[T]] = new Greedy(p).many
+
 }
