@@ -116,53 +116,25 @@ trait PythonParsers extends PythonLexemes with PythonAst { self: Parsers with Sy
 
   val (opening, closing) = (pairs.keys, pairs.values)
 
+  def enclosed[T]: (=> Parser[T]) => Parser[T] =
+    p => oneOf(opening) >> { o => p <~ pairs(o) }
+
   // non empty Dyck language on these pairs
-  val dyck: Parser[Any] = many(oneOf(opening) >> { o => dyck ~ pairs(o) })
-  val extDyck = filter((opening ++ closing).toSeq contains _)(dyck)
-  // combinator that delegates to p and q until q is successful
-  // def until()
+  lazy val dyck: Parser[Any] = enclosed(many(dyck))
 
-  // combinator that only passes the selected lexemes to p
-  // def filter[T](pred: Elem => Boolean): Parser[T] => Parser[T] = p => {
-  //   val include = some(acceptIf(pred))
-  //   val exclude = some(acceptIf(c => !pred(c)))
-
-  //   lazy val filtered: NT[T] =
-  //     ( done(p)
-  //     | (include &> delegate(p)) >> { pp =>
-  //         (exclude ~> filter(pred)(pp)) | done(pp)
-  //       }
-  //     | exclude ~> filtered
-  //     )
-  //   filtered
-  // }
-  def filter[T](pred: Elem => Boolean): Parser[T] => Parser[T] = { p =>
-    lazy val filtered: NT[T] =
-      ( done(p)
-      | eat { el => if (pred(el)) filter(pred)(p << el) else filtered }
-      )
-    filtered
-  }
+  // the repetition of enclosed is unfortunate
+  lazy val extDyck: Parser[Any] = enclosed(always) &>
+    filter((opening ++ closing).toSeq contains _)(dyck)
 
   // From the python reference manual:
   //
   //   Expressions in parentheses, square brackets or curly braces can be split
   //   over more than one physical line without using backslashes.
   //   [...] Implicitly continued lines can carry comments.
-  def implicitJoin[T]: Parser[T] => Parser[T] = { p =>
-
-    // read arbitrary many non-opening tokens
-    done(p) | (some(no(opening)) &> delegate(p)).flatMap { pp =>
-
-      // either we are done now, or we actually encounter an opening token
-      done(pp) | oneOf(opening).flatMap { o =>
-
-        // filter out all newlines, until closed
-        val untilClosed       = o ~ extDyck ~ pairs(o)
-        val filterOutNewlines = filter(_ != NL)(delegate(pp))
-        ((untilClosed &> filterOutNewlines) << o) >> implicitJoin
-      }
-    }
+  def implicitJoin[T]: Parser[T] => Parser[T] = repeat[T] { p =>
+    ( extDyck &> filter(_ != NL)(delegate(p))
+    | noneOf(opening ++ closing) &> delegate(p)
+    )
   }
 
   // Strips out newlines if they are preceeded by a backslash punctuation
@@ -187,17 +159,18 @@ trait PythonParsers extends PythonLexemes with PythonAst { self: Parsers with Sy
 
   val line      = many(no(NL)) ~ NL
   val emptyLine = many(WS) ~ NL
-  def indentBy[T](n: Int): Parser[T] => Parser[T] = repeat[T] { p =>
-    // pass empty lines as NL to p
-    ( emptyLine ^^ { _ => p << NL }
-    // first consume `n` spaces, then delegate to p
-    // here we intersect with not(emptyLine) to prevent ambiguities
-    | manyN(n, WS) ~> (not(emptyLine) &> line &> delegate(p))
+  def indentBy[T](indentation: Parser[Any]): Parser[T] => Parser[T] = repeat[T] { p =>
+    // here we use (locally) biased choice to prevent ambiguities
+    biasedAlt (
+      // pass empty lines as NL to p
+      emptyLine ^^ { _ => p << NL },
+      // first consume `n` spaces, then delegate to p
+      indentation ~> (line &> delegate(p))
     )
   }
 
   def indented[T](p: Parser[T]): Parser[T] =
-    consumed(greedySome(WS)) >> { s => indentBy(s.size)(p) <<< s }
+    consumed(some(WS)) >> { i => not(prefix(WS)) &> indentBy(acceptSeq(i))(p) <<< i }
 
   def preprocess[T] = stripComments[T] compose explicitJoin[T] compose implicitJoin[T]
 
@@ -427,6 +400,6 @@ trait PythonParsers extends PythonLexemes with PythonAst { self: Parsers with Sy
 
 }
 
-object PythonParsers extends PythonParsers with DerivativeParsers with Syntax with DerivedOps {
+object PythonParsers extends PythonParsers with DerivedOps with DerivativeParsers with Syntax {
   override def accept(t: Elem): Parser[Elem] = acceptIf(_ == t)
 }
