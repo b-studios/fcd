@@ -98,8 +98,13 @@ trait DerivedOps { self: Parsers with Syntax =>
 
   // A parser that repeatedly feeds input to the parser `p` in the context
   // described by the function `f`.
-  def repeat[T](f: Parser[T] => Parser[Parser[T]]): Parser[T] => Parser[T] = p =>
-    done(p) | f(p) >> repeat(f)
+  def repeat[T](f: Parser[T] => Parser[Parser[T]]): Parser[T] => Parser[T] = {
+    val cache = scala.collection.mutable.WeakHashMap.empty[Parser[T], Parser[T]]
+    def rec: Parser[T] => Parser[T] = p => cache.getOrElseUpdate(p, {
+      done(p) | nonterminal(f(p) >> rec)
+    })
+    rec
+  }
 
   // repeat is just an instance of repeatAll
   def repeatAll[T](f: List[Parser[T]] => Parser[List[Parser[T]]]): List[Parser[T]] => Parser[List[T]] = ps =>
@@ -116,28 +121,69 @@ trait DerivedOps { self: Parsers with Syntax =>
   def rightDerivative[R](p: Parser[R], elems: Seq[Elem]): Parser[R] =
     done(p <<< elems) | eat { c => rightDerivative(p << c, elems) }
 
+  def biasedAlt[T](p: Parser[T], q: Parser[T]): Parser[T] = {
+    p | not(prefix(p)) &> q
+  }
 
-  // Greedy repitition
-  private class Greedy[T](p: Parser[T]) {
-      private def gs(curr: Parser[T]): Parser[List[T]] =
-        // Either we are done and return a singleton list or we can process
-        // another token.
-        done(curr) ^^ { r => List(r) } | eat { el =>
-          lazy val next = curr << el
-          ( gs(next)
-            // The remainder may only be processed with greedyMany if no
-            // prefix may be recognized by `next`.
-          | done(curr) ~ (not(next ~ always(())) &> (many << el)) ^^ {
-              case fst ~ rst => fst :: rst
-            }
-          )
-        }
+  def lookahead[T](p: Parser[Any], q: Parser[T]): Parser[T] =
+    not(prefix(p)) &> q
+    //consumed(p) >> { in => q <<< in }
 
-      lazy val some: NT[List[T]] = gs(p)
-      lazy val many: NT[List[T]] = some | succeed(Nil)
+
+  // some extension point for optimization
+  def prefix: Parser[Any] => Parser[Unit] = p => p ~> always
+
+
+  // per-element action performed on p
+  def rep[T](f: Elem => Parser[T] => Parser[T]) =
+    repeat[T] { p => any ^^ { f(_)(p) } }
+
+  // combinator that only passes the selected lexemes to p
+  def filter[T](pred: Elem => Boolean): Parser[T] => Parser[T] =
+    rep(el => p => if (pred(el)) (p << el) else p)
+
+  def skip[T]: Parser[T] => Parser[T] =
+    rep(el => p => p)
+
+  def mapIn[T](f: Elem => Elem): Parser[T] => Parser[T] =
+    rep(el => p => p << f(el))
+
+  def mapInPartial[T](f: PartialFunction[Elem, Elem]): Parser[T] => Parser[T] =
+    mapIn(f orElse { case x => x })
+
+  def inRegion[T](region: Parser[Any], f: Parser[Parser[T]] => Parser[Parser[T]]): Parser[T] => Parser[T] = {
+
+      // to prevent accessive re-parsing we introduce some caching on this
+      // parser combinator here.
+      val cache = scala.collection.mutable.WeakHashMap.empty[Parser[T], Parser[T]]
+
+      def rec: Parser[T] => Parser[T] = p => cache.getOrElseUpdate(p, {
+
+        lazy val dp = delegate(p)
+        nonterminal (
+          done(p) | biasedAlt(
+            region &> f(dp) >> rec,
+            (any &> dp) >> rec))
+      })
+      rec
     }
 
-    def greedySome[T](p: Parser[T]): Parser[List[T]] = new Greedy(p).some
-    def greedyMany[T](p: Parser[T]): Parser[List[T]] = new Greedy(p).many
 
+  // Greedy repetition
+  def greedyMany[T](p: Parser[T]): Parser[List[T]] = greedySome(p) | succeed(Nil)
+
+  // Instead of a class use a closure:
+  def greedySome[T]: Parser[T] => NT[List[T]] = { p =>
+
+    def withNext(p: Parser[T], ps: Parser[List[T]]): Parser[List[T]] =
+      done(p) ~ ps ^^ { case t ~ ts => t :: ts }
+
+    def forceRead(curr: Parser[T]): Parser[List[T]] =
+      withNext(curr, succeed(Nil)) | eat { el =>
+        biasedAlt( forceRead(curr << el),
+                   withNext(curr, greedySome(p) << el))
+      }
+
+    forceRead(p)
+  }
 }
