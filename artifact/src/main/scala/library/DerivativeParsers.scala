@@ -31,6 +31,15 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
     def mapResults[U](f: (=> Results[R]) => Results[U]): Parser[U] = new MapResults(p, f)
     def map[U](f: R => U): Parser[U] = p mapResults { ress => ress map f }
     def withResults[U](res: List[U]): Parser[U] = mapResults(_ => res)
+
+    // for optimization of biased choice
+    def prefix: Parser[Unit] = {
+       if (accepts) {
+        always
+      } else {
+        eat { el => (p consume el).prefix }
+      }
+    }
   }
 
   object Fail extends NullaryPrintable("∅") with Parser[Nothing] {
@@ -50,7 +59,23 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
     override def mapResults[U](f: (=> Results[Nothing]) => Results[U]): this.type = this
     override def done = this
 
+    override def not: Parser[Unit] = Always
+    override def prefix = this
     override def toString: String = "∅"
+  }
+
+  object Always extends NullaryPrintable("∞") with Parser[Unit] {
+    override def results = List(())
+    override def failed  = false
+    override def accepts = true
+    override def consume = in => Always
+    override def not: Parser[Unit] = fail
+    override def and[U](q: Parser[U]): Parser[(Unit, U)] = q map { r => ((), r) }
+    override def and2[U](q: Parser[U]): Parser[(U, Unit)] = q map { r => (r, ()) }
+
+    // this is a valid optimization, however it almost never occurs.
+    override def alt[U >: Unit](q: Parser[U]) = this
+    override def alt2[U >: Unit](q: Parser[U]) = this
   }
 
   case class Succeed[R](ress: Results[R]) extends NullaryPrintable("ε") with Parser[R] { p =>
@@ -103,6 +128,7 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
     def failed  = false // we never know, this is a conservative approx.
     def accepts = !p.accepts
     def consume: Elem => Parser[Unit] = in => (p consume in).not
+    override def not = p withResults List(())
   }
 
   class Alt[R, U >: R](val p: Parser[R], val q: Parser[U]) extends BinaryPrintable("|", p, q) with Parser[U] {
@@ -124,6 +150,12 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
     def accepts = p.accepts && q.accepts
     def consume = (in: Elem) => ((p consume in) seq q) alt (p.done seq (q consume in))
     override def toString = s"($p ~ $q)"
+
+    // canonicalization rule (1) from PLDI 2016
+    override def seq[T](r: Parser[T]): Parser[(R ~ U) ~ T] =
+      (p seq (q seq r)) map {
+        case (rr ~ (ru ~ rt)) => ((rr, ru), rt)
+    }
   }
 
   class Done[R](val p: Parser[R]) extends UnaryPrintable(s"done", p) with Parser[R] {
@@ -143,7 +175,27 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
     override def mapResults[T](g: (=> Results[U]) => Results[T]): Parser[T] = p mapResults { res => g(f(res)) }
     override def map[T](g: U => T): Parser[T] = p mapResults { res => f(res) map g }
     override def done = p.done mapResults f
+    override def not = p.not
     override def toString = s"map($p)"
+
+    // canonicalization rule (2) from PLDI 2016
+    // allows for instance rewriting (always.map(f) & p) -> p.map(...f...)
+    override def seq[S](q: Parser[S]): Parser[U ~ S] =
+      (p seq q).mapResults(rss => rss.unzip match {
+        case (us, ss) => f(us) zip ss
+      })
+    override def seq2[S](q: Parser[S]): Parser[S ~ U] =
+      (p seq2 q).mapResults(rss => rss.unzip match {
+        case (ss, us) => ss zip f(us)
+      })
+    override def and[S](q: Parser[S]): Parser[(U, S)] =
+      (p and q).mapResults(rss => rss.unzip match {
+        case (us, ss) => f(us) zip ss
+      })
+    override def and2[S](q: Parser[S]): Parser[(S, U)] =
+      (p and2 q).mapResults(rss => rss.unzip match {
+        case (ss, us) => ss zip f(us)
+      })
   }
 
   class And[R, U](val p: Parser[R], val q: Parser[U]) extends BinaryPrintable("&", p, q) with Parser[(R, U)] {
@@ -258,9 +310,9 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
         }
   }
 
-
   // combinators without parser arguments
-  def fail: Parser[Nothing] = Fail
+  val fail: Parser[Nothing] = Fail
+  val always: Parser[Unit] = Always
   def succeed[R](res: R): Parser[R] = Succeed(List(res))
   def acceptIf(cond: Elem => Boolean): Parser[Elem] = new AcceptIf(cond)
 
@@ -288,6 +340,10 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
   // for testing
   override def isSuccess[R](p: Parser[R]): Boolean = p.accepts
   override def accept(t: Elem): Parser[Elem] = Accept(t)
+
+  // optimization: Once p accepts, p as a prefix will always accept.
+  // often used to implement biased choice: (not(prefix(p)) &> q
+  override def prefix: Parser[Any] => Parser[Unit] = p => p.prefix
 }
 
 object DerivativeParsers extends RichParsers with DerivativeParsers {

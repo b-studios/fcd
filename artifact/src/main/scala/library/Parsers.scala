@@ -43,6 +43,9 @@ trait Parsers {
   def isSuccess[R](p: Parser[R]): Boolean = !isFailure(p)
   def isFailure[R](p: Parser[R]): Boolean = !isSuccess(p)
   def accepts[R, ES <% Iterable[Elem]](p: Parser[R], s: ES): Boolean = isSuccess(feedAll(p, s))
+
+  // As optimization
+  def always: Parser[Unit]
 }
 
 trait RichParsers extends Parsers with Syntax with DerivedOps with CharSyntax

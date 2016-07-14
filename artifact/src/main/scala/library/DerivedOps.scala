@@ -24,8 +24,10 @@ trait DerivedOps { self: Parsers with Syntax =>
     many_v
   }
 
-  def always[T](t: T): Parser[T] =
-    many(any) map { _ => t }
+  // val always: Parser[Unit] = many(any) map { _ => () }
+
+  // def always[T](t: T): Parser[T] =
+  //   many(any) map { _ => t }
 
   def oneOf[ES <% Iterable[Elem]](s: ES): Parser[Elem] = acceptIf {
     t => s.exists(_ == t)
