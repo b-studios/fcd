@@ -28,7 +28,8 @@ class PythonParserTests extends FunSpec with Matchers {
 
     dyck    shouldParse    List[Lexeme]("(", "(", ")", ")")
     dyck    shouldNotParse List[Lexeme]("(", "(", ")")
-    extDyck shouldParse    List[Lexeme](a, "(", a, "(", a, NL, a, ")", a, ")")
+    extDyck shouldParse    List[Lexeme]("(", a, "(", a, NL, a, ")", a, ")")
+    extDyck shouldNotParse    List[Lexeme](a, "(", a, "(", a, NL, a, ")", a, ")", a)
 
     implicitJoin(p) shouldParse     List[Lexeme](a, a, a, a, a)
     implicitJoin(p) shouldNotParse  List[Lexeme](a, a, a, NL, a, a)
@@ -255,11 +256,11 @@ class PythonParserTests extends FunSpec with Matchers {
       EOS
     )
 
-    indentBy(2)(collect) shouldParseWith (
+    indentBy(WS ~ WS)(collect) shouldParseWith (
       List[Lexeme](WS, WS, a, NL),
       List[Lexeme](a, NL))
 
-    indentBy(2)(collect) shouldParseWith (
+    indentBy(WS ~ WS)(collect) shouldParseWith (
       List[Lexeme](WS, WS, NL, NL, WS, WS, a, NL),
       List[Lexeme](NL, NL, a, NL))
 
