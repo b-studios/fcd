@@ -76,6 +76,7 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
     // this is a valid optimization, however it almost never occurs.
     override def alt[U >: Unit](q: Parser[U]) = this
     override def alt2[U >: Unit](q: Parser[U]) = this
+    override def toString = "always"
   }
 
   case class Succeed[R](ress: Results[R]) extends NullaryPrintable("ε") with Parser[R] { p =>
@@ -129,6 +130,7 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
     def accepts = !p.accepts
     def consume: Elem => Parser[Unit] = in => (p consume in).not
     override def not = p withResults List(())
+    override def toString = s"not($p)"
   }
 
   class Alt[R, U >: R](val p: Parser[R], val q: Parser[U]) extends BinaryPrintable("|", p, q) with Parser[U] {
@@ -216,6 +218,10 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
       val qss = (p.results map f) map (_ consume in)
       qss.foldLeft(next)(_ alt _)
     }
+
+    // distribute not over flatMap
+    // override def not = p.not alt (p flatMap (r => f(r).not))
+    override def toString = "flatMap"
   }
 
   class Nonterminal[+R](_p: => Parser[R]) extends Parser[R] {
