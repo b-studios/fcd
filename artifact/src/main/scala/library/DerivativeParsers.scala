@@ -180,6 +180,8 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
     override def mapResults[T](g: (=> Results[U]) => Results[T]): Parser[T] = p mapResults { res => g(f(res)) }
     override def map[T](g: U => T): Parser[T] = p mapResults { res => f(res) map g }
     override def done = p.done mapResults f
+
+    // we can forget the results here.
     override def not = p.not
     override def toString = s"map($p)"
 
@@ -208,6 +210,7 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
     def failed  = p.failed || q.failed
     def accepts = p.accepts && q.accepts
     def consume = (in: Elem) => (p consume in) and (q consume in)
+    override def not = p.not alt q.not
     override def toString = s"($p & $q)"
   }
 
