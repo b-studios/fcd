@@ -138,6 +138,9 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
     def failed  = p.failed && q.failed
     def accepts = p.accepts || q.accepts
     def consume = (in: Elem) => (p consume in) alt (q consume in)
+
+    // optimization for not(p | map(always))
+    override def not = (p.not and q.not) withResults List(())
     override def toString = s"($p | $q)"
   }
 
