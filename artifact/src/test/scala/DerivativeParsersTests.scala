@@ -429,9 +429,25 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
 
   }
 
-  describe("greedy repitition") {
+  describe("Biased choice") {
+    val p = biasedAlt("foo", some(letter)) ~ "bar"
+
+    p shouldParse "foobar"
+    p shouldNotParse "foozbar"
+    p shouldParse "barbar"
+
+    // this test shows, that we can only implement a locally biased choice
+    val q = biasedAlt("foo", "f") ~ "oo"
+
+    // should actually *not* parse "foo", but does:
+    q shouldParse "foo"
+  }
+
+  describe("Greedy repitition") {
 
     it ("should return only the result of the longest match") {
+      greedySome(some('a')) parse ""    shouldBe List()
+      greedyMany(some('a')) parse ""    shouldBe List(List())
       greedySome(some('a')) parse "a"   shouldBe List(List(List('a')))
       greedySome(some('a')) parse "aaa" shouldBe List(List(List('a', 'a', 'a')))
     }
@@ -450,9 +466,199 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
       greedySome(q) parse "abbab" shouldBe List(List("ab", "b", "ab"))
       greedySome(q) parse "abbaab" shouldBe List(List("ab", "b", "a", "ab"))
       greedySome(q) parse "aaaab" shouldBe List(List("a", "a", "a", "ab"))
-
     }
 
+    // This shows that our implementation is only locally greedy
+    println(greedySome("ab" | "a") ~ "b" parse "abab")
+  }
+
+  describe("how to locally rewrite biased choice") {
+
+    // Problem with our biased choice is that it is local.
+    // That is, for the parsers (p <| q) ~ r and
+    //   p = "foo"
+    //   q = "f"
+    //   r = "oo"
+    //
+    // the string "foo" is recognized but it should NOT, since p matches
+    // "foo" -- however the input is not "foooo".
+
+    val p: Parser[Any] = "foo"
+    val q: Parser[Any] = "f"
+    val r: Parser[Any] = ("oo" | "b")
+
+    val ex: Parser[Any] = biasedAlt(p, q) ~ r
+    // ex shouldNotParse "foo" //-> fails
+
+    // If the right-hand-side `r` is locally known the parser can be
+    // rewritten to:
+
+    val rewrite = p ~ r | (neg(p ~ always) &> (q ~ r))
+    rewrite shouldNotParse "foo"
+    rewrite shouldParse "foooo"
+    rewrite shouldParse "fb"
+  }
+
+  // Since "lexing" is performed after indentation checking, but indentation
+  // checking requires knowledge about the lexical structure, the line joining
+  // combinators perform two tasks:
+  //
+  // 1. Approximate lexical structure by (partially) "reusing" the definitions of
+  //    the lexers
+  // 2. Convert joined newlines into special tokens `↩` for indentation
+  //    checking and convert them back to '\n' after indentation checking.
+  //
+  // The line joining indentation checker then is defined by
+  //
+  //   joiningIndent(p) = ilj(elj(mlj(indented(unmask(p)))))
+  //
+  // That is, the input to `p` is unmasked again, so `↩` tokens are only
+  // used to communicate to the indentation checker that these newlines should
+  // be ignored.
+  describe("Lexically aware line joining by masking") {
+
+    import scala.collection.mutable
+
+    // regions inside skip will not be treated by f.
+    // `region` and `skip` should not have an intersection.
+    def transform[T](region: Parser[Any], skip: Parser[Any], f: Parser[Parser[T]] => Parser[Parser[T]]): Parser[T] => Parser[T] = {
+
+      // to prevent accessive re-parsing we introduce some caching on this
+      // parser combinator here.
+      val cache = mutable.WeakHashMap.empty[Parser[T], Parser[T]]
+
+      def rec: Parser[T] => Parser[T] = p => cache.getOrElseUpdate(p, {
+
+        lazy val dp = delegate(p)
+        nonterminal (
+          done(p) | biasedAlt(
+            ( skip   &> dp
+            | region &> f(dp)
+            ) >> rec,
+          (any &> dp) >> rec))
+      })
+      rec
+    }
+
+    // parsers as input transformers
+    def filterNewlines[T] = filter[T](_ != '\n')
+    def mask[T]           = mapInPartial[T] { case '\n' => '↩' }
+    def toSpace[T]        = mapInPartial[T] { case '\n' => ' ' }
+    def unmask[T]         = mapInPartial[T] { case '↩' => '\n' }
+
+    // some lexers
+    val singleString: Parser[String] = consumed('"' ~ many(nonOf("\"\n")) ~ '"')
+    val comment: Parser[String]      = consumed('#' ~ many(nonOf("\n")) ~ '\n')
+    val multilineString: Parser[String] = consumed("'''" ~ neg(always ~ prefix("'''")) ~ "'''")
+
+    singleString shouldParse "\"hello world\""
+    singleString shouldNotParse "\"hello\nworld\""
+    singleString shouldParse "\"hello'''world\""
+    multilineString shouldParse "'''Hello \" \n\" world'''"
+
+    // for testing
+    val collect = consumed(many(any)) ^^ { x => x.mkString }
+
+    // for now just filter newlines
+    val p = transform[String](multilineString, singleString | comment, filterNewlines)(collect)
+
+    it("should only filter newlines in multiline strings") {
+      (p parse "hello '''foo\n\"bar''' test\n foo \" bar'''foo \"\n") should be (List("hello '''foo\"bar''' test\n foo \" bar'''foo \"\n"))
+    }
+    // here we can already observe performance problems (about 400ms):
+    p shouldParse "hello '''foo\n\"bar''' test\n foo \" bar'''foo \"\n some content that is not a program, but could be one \n. # ''' some comment \nIt contains newlines \n, \"and some Strings\". Even Multiline strings with '''newlines\n'''."
+
+
+    lazy val noText: Parser[Any] = comment | singleString | multilineString
+
+    // While the `transform` combinator can be readily used to implement
+    // `multiline` and `elj`, implicit line joining (`ilj`) requires an even
+    // more specialized treatment: skip-section might occur inside of the
+    // region. For instance the first closing bracket in "(\n # ) \n )" should
+    // not count.
+    val pairs = Map[Elem, Elem]('(' -> ')', '[' -> ']', '{' -> '}')
+    val (opening, closing) = (pairs.keys.toList, pairs.values.toList)
+
+
+    lazy val dyck: NT[Any] = one(opening) >> { paren => many(dyck) ~ pairs(paren) }
+      //'(' ~> many(dyck) <~ ')'
+
+    // within comments and strings filter out everything
+    val parens =
+      // we need to intersect with the outermost parenthesis to prevent
+      // parsing something like "aaa()aaa"
+      (one(opening) >> { paren => always ~ pairs(paren) }) &>
+        transform[Any](noText | nonOf(opening) & nonOf(closing) , err, skip)(dyck)
+
+    parens shouldParse "()"
+    parens shouldParse "(())"
+    parens shouldParse "(()()())"
+    parens shouldParse "(()[]())"
+    parens shouldParse "(()[()[]]())"
+    parens shouldNotParse "(()[()[]())"
+    parens shouldNotParse "a (()) a"
+    parens shouldNotParse "(()"
+    parens shouldParse "( hello world ())"
+    parens shouldParse "( [# foo \"()) \n ()]{\" [ \" hello } world ())"
+    parens shouldNotParse "( [# foo \"()) \n ()]{\" [ \" hello world ())"
+    parens shouldNotParse "( [# foo \"()) \n ()]\" [ \" hello } world ())"
+    parens shouldNotParse "( [# foo \"()) \n )]{\" [ \" hello } world ())"
+    parens shouldParse "( hello \" ) \"world ())"
+    parens shouldNotParse "( hello \" ) \""
+
+    lazy val escapedNL = '\\' ~ '\n'
+
+    // multiline string line joining
+    def mlj[T] = transform[T](multilineString, comment | singleString, mask)
+    // implicit line joining in parenthesis
+    def ilj[T] = transform[T](parens, noText, mask)
+    // explicit line joining by escape sequences
+    def elj[T] = transform[T](escapedNL, noText, mask)
+
+    // reusing some definition of `indented`
+    import section_3_5_improved._
+    def joiningIndent[T]: Parser[T] => Parser[T] = p =>
+      ilj(elj(mlj(indented(unmask(p)))))
+
+
+    it("should mask perform line joining before checking indentation") {
+      (joiningIndent(collect) parse "  foo'''a \n a'''\n  bar\n  ( \n )\n") should be (
+        List("foo'''a \n a'''\nbar\n( \n )\n")
+      )
+      (joiningIndent(collect) parse "  '''some \n multiline \n'''\n  ( # comment (\n ) hello\n  test and \\\n escaped\n") should be (
+        List("'''some \n multiline \n'''\n( # comment (\n ) hello\ntest and \\\n escaped\n")
+      )
+    }
+    joiningIndent(collect) shouldParse "  '''some \n multiline \n'''\n  ( # comment (\n )\n"
+    joiningIndent(collect) shouldNotParse "  '''some \n multiline \n''\n  ( # comment (\n )\n"
+
+
+    val WS: Parser[Any] = ' '
+    val spacesNoNl = some(WS)
+    val NL: Parser[Any] = '\n'
+    val spaces = many(WS | NL | comment)
+    val lineEnd = opt(spacesNoNl) ~ (NL | comment)
+
+    val id: Parser[String] = consumed(some(letter))
+
+    // Python Parser Skeleton
+
+    lazy val expr: NT[Any] = id | singleString | multilineString | "(" ~> spaces ~> expr <~ spaces <~ ")" | "[" ~> spaces ~> opt(someSep(expr, spaces ~ "," ~ spaces) ~ spaces)  <~ "]"
+    lazy val stmt: NT[Any] = expr <~ lineEnd | "def" ~> spacesNoNl ~> id ~ ("():" ~> suite)
+    lazy val stmts: NT[Any] = someSep(stmt, spaces)
+    lazy val suite: NT[Any] = lineEnd ~> joiningIndent(stmts)
+
+    stmt shouldParse    "def foo():\n  '''hello\n '''\n"
+    stmt shouldNotParse "def foo():\n  \"'''hello\n '''\"\n"
+    stmt shouldParse    "def foo():\n  '''hello\n ''' # some comment  \n"
+    stmt shouldNotParse "def foo():\n  # '''hello\n ''' some comment  \n"
+    stmt shouldParse    "def foo():\n  []\n"
+    stmt shouldParse    "def foo():\n  [foo, bar]\n"
+    stmt shouldParse    "def foo():\n  [foo, \nbar]\n"
+    stmt shouldNotParse "def foo():\n  \"[foo, \nbar]\"\n"
+    stmt shouldParse    "def foo():\n  \"[foo, bar]\"\n"
+    stmt shouldParse    "def foo():\n  foo\n  def bar():\n    \"hello\"\n  bar\n"
+    stmt shouldParse    "def foo():\n  foo\n  def bar():\n    '''\nhello\n'''\n  bar\n"
   }
 
 }
