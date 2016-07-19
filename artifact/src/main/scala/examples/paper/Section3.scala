@@ -109,7 +109,7 @@ trait Section3 extends ParserUsage {
     // calls are defined in the file Syntax.scala
     val digit: Parser[Int] = acceptIf(_.isDigit) ^^ { s => Integer.valueOf(s.toString) }
 
-    lazy val number: Parser[Int] =
+    val number: Parser[Int] =
       nonterminal( number ~ digit ^^ { case (n, d) => (n * 10) + d }
                  | digit
                  )
