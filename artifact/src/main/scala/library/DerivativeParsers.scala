@@ -214,7 +214,7 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
     override def toString = s"($p & $q)"
   }
 
-  class FlatMap[R, U](val p: Parser[R], f: R ==> Parser[U]) extends UnaryPrintable("flatMap", p) with Parser[U] {
+  class FlatMap[R, U](val p: Parser[R], f: R => Parser[U]) extends UnaryPrintable("flatMap", p) with Parser[U] {
     def results = ((p.results map f) flatMap (_.results)).distinct //res().distinct
     def accepts = !results.isEmpty
     def failed  = p.failed // that's the best we know
