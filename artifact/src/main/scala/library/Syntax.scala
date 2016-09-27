@@ -22,6 +22,10 @@ trait Syntax { self: Parsers with DerivedOps =>
     def <&[U](q: Parser[U]) = and(p, q) map { _._1 }
     def &>[U](q: Parser[U]) = and(p, q) map { _._2 }
 
+    // biased Alternative
+    def <|[U >: R](q: Parser[U]) = biasedAlt(p, q)
+    def |>[U >: R](q: Parser[U]) = biasedAlt(q, p)
+
     def ^^[U](f: R => U): Parser[U] = p map f
     def ^^^[U](u: => U): Parser[U] = p map { _ => u }
 
