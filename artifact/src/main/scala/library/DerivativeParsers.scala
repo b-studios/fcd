@@ -8,6 +8,11 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
 
   type Results[+R] = List[R]
 
+  private var time = 0
+  def resetCache() {
+    time += 1
+  }
+
   trait Parser[+R] extends Printable { p =>
 
     def results: Results[R]
@@ -273,6 +278,17 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
     case class Stable[+R](result: Parser[R]) extends DerivationResult[R]
     case object PreliminaryFail extends DerivationResult[Nothing]
 
+
+    private var cacheTime = time
+    private def checkCache() {
+      if (cacheTime < time) {
+        cache.clear()
+        fix1.reset()
+        fix2.reset()
+        cacheTime = time
+      }
+    }
+
     private[this] val cache: mutable.ListMap[Elem, DerivationResult[R]] = mutable.ListMap.empty
     protected[this] def compute(el: Elem): Parser[R] = {
       lazy val next: Parser[R] = p consume el
@@ -292,7 +308,9 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
       }
 
     }
-    override def consume: Elem => Parser[R] = el =>
+    override def consume: Elem => Parser[R] = el => {
+      checkCache()
+
       cache.getOrElseUpdate(el, {
         cache(el) = PreliminaryFail;
         Stable(compute(el))
@@ -304,6 +322,7 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
           res
         case Stable(p) => p
       }
+    }
 
 
     def named(str: => String): this.type = {

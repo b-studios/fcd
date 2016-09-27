@@ -117,49 +117,56 @@ trait Attributed {
       updateAttributes()
     }
   }
-}
-
-
-/**
- FixedPoint tracks the state of a fixed point algorithm for the attributes of a grammar.
-
- In case there are fixed points running in multiple threads, each attribute is thread-local.
- */
-
-private object FixedPoint {
-  private val _stabilized = new ThreadLocal[Boolean]
-  _stabilized.set(false)
-  def stabilized = _stabilized.get ;
-  def stabilized_= (v : Boolean) { _stabilized.set(v) }
-
-  private val _running = new ThreadLocal[Boolean]
-  _running.set(false)
-  def running = _running.get ;
-  def running_= (v : Boolean) { _running.set(v) }
-
-  private val _changed = new ThreadLocal[Boolean]
-  _changed.set(false)
-  def changed = _changed.get ;
-  def changed_= (v : Boolean) { _changed.set(v) }
-
-  private val _generation = new ThreadLocal[Int]
-  _generation.set(0)
-  def generation = _generation.get ;
-  def generation_= (v : Int) { _generation.set(v) }
-
-  private val _master = new ThreadLocal[Object]
-  _master.set(null)
-  def master = _master.get ;
-  def master_= (v : Object) { _master.set(v) }
 
   /**
-   Resets all of the fixed point variables for this thread.
+   FixedPoint tracks the state of a fixed point algorithm for the attributes of a grammar.
+
+   In case there are fixed points running in multiple threads, each attribute is thread-local.
    */
-  def reset () {
-    this.stabilized = false ;
-    this.running = false ;
-    this.master = null ;
-    this.changed = false ;
-    this.generation = 0 ;
+
+  private object FixedPoint {
+    private val _stabilized = new ThreadLocal[Boolean]
+    _stabilized.set(false)
+    def stabilized = _stabilized.get ;
+    def stabilized_= (v : Boolean) { _stabilized.set(v) }
+
+    private val _running = new ThreadLocal[Boolean]
+    _running.set(false)
+    def running = _running.get ;
+    def running_= (v : Boolean) { _running.set(v) }
+
+    private val _changed = new ThreadLocal[Boolean]
+    _changed.set(false)
+    def changed = _changed.get ;
+    def changed_= (v : Boolean) { _changed.set(v) }
+
+    private val _generation = new ThreadLocal[Int]
+    _generation.set(0)
+    def generation = _generation.get ;
+    def generation_= (v : Int) { _generation.set(v) }
+
+    private val _master = new ThreadLocal[Object]
+    _master.set(null)
+    def master = _master.get ;
+    def master_= (v : Object) { _master.set(v) }
+
+    /**
+     Resets all of the fixed point variables for this thread.
+     */
+    def reset () {
+      this.stabilized = false ;
+      this.running = false ;
+      this.master = null ;
+      this.changed = false ;
+      this.generation = 0 ;
+    }
   }
+
+  def reset() {
+    FixedPoint.reset()
+    generation = -1 ;
+    stabilized = false ;
+  }
+
 }
+

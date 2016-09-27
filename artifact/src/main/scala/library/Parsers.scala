@@ -17,6 +17,8 @@ trait Parsers {
   // The abstract interface of a parser
   type Parser[+R]
 
+  def resetCache(): Unit
+
   def parse[R](p: Parser[R], in: Iterable[Elem]): Results[R]
 
   def fail: Parser[Nothing]
