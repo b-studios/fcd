@@ -172,7 +172,7 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
     override def toString = s"done($p)"
   }
 
-  class MapResults[R, U](val p: Parser[R], f: (=> Results[R]) => Results[U]) extends UnaryPrintable(s"mapResults", p) with Parser[U] {
+  class MapResults[R, U](val p: Parser[R], val f: (=> Results[R]) => Results[U]) extends UnaryPrintable(s"mapResults", p) with Parser[U] {
     def results = f(p.results).distinct
     def failed  = p.failed
     def accepts = p.accepts
@@ -214,7 +214,7 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
     override def toString = s"($p & $q)"
   }
 
-  class FlatMap[R, U](val p: Parser[R], f: R => Parser[U]) extends UnaryPrintable("flatMap", p) with Parser[U] {
+  class FlatMap[R, U](val p: Parser[R], f: R ==> Parser[U]) extends UnaryPrintable("flatMap", p) with Parser[U] {
     def results = ((p.results map f) flatMap (_.results)).distinct //res().distinct
     def accepts = !results.isEmpty
     def failed  = p.failed // that's the best we know
@@ -279,12 +279,18 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
       lazy val nt: Parser[R] = {
         nonterminal(next)
       }
-      // this forces p, which might lead to a diverging derivation
-      // so we first need to memoize preliminary fail.
-      if (p.failed)
-        fail
-      else
-        nt
+
+      p match {
+        case _ if p.failed => fail
+        case mp: MapResults[s, R] => {
+          lazy val next = mp.p consume el
+          lazy val nt: Parser[R] = { nonterminal(next) mapResults mp.f }
+          nt
+        }
+        case np: Nonterminal[R] => next
+        case _ => nt
+      }
+
     }
     override def consume: Elem => Parser[R] = el =>
       cache.getOrElseUpdate(el, {
@@ -298,6 +304,7 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
           res
         case Stable(p) => p
       }
+
 
     def named(str: => String): this.type = {
       name = str
