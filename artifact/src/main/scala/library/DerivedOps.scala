@@ -45,6 +45,11 @@ trait DerivedOps { self: Parsers with Syntax =>
     else p ~ manyN(n - 1, p) map { case r ~ rs => r :: rs }
   }
 
+  def atMost[T](n: Int, p: Parser[T]): Parser[List[T]] = {
+    if (n == 0) succeed(Nil)
+    else (p ~ atMost(n - 1, p) map { case r ~ rs => r :: rs }) | succeed(Nil)
+  }
+
   def manySep[T](p: Parser[T], sep: Parser[Any]): Parser[List[T]] = {
     alt(someSep(p, sep), succeed(Nil))
   }
