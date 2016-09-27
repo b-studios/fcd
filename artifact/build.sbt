@@ -11,6 +11,14 @@ libraryDependencies += "org.scalatest" %% "scalatest" % "2.2.4" % "test"
 resolvers += "Sonatype OSS Snapshots" at
   "https://oss.sonatype.org/content/repositories/releases"
 
+libraryDependencies += "com.storm-enroute" %% "scalameter" % "0.7"
+
+val scalaMeterFramework = new TestFramework("org.scalameter.ScalaMeterFramework")
+
+testFrameworks in ThisBuild += scalaMeterFramework
+
+testOptions in ThisBuild += Tests.Argument(scalaMeterFramework, "-silent")
+
 parallelExecution in Test := true
 
 libraryDependencies += "org.scala-lang.modules" % "scala-xml_2.11" % "1.0.5"
