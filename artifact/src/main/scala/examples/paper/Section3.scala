@@ -8,7 +8,7 @@ package fcd
  *
  *   Brachthäuser, Rendel, Ostermann.
  *   Parsing with First-Class Derivatives
- *   Submitted to OOPSLA 2016.
+ *   To appear in OOPSLA 2016.
  *
  * The examples are grouped by subsections. For every subsection with
  * examples we introduced a corresponding Scala object below.
