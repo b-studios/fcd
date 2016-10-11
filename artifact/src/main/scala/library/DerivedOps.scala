@@ -99,7 +99,7 @@ trait DerivedOps { self: Parsers with Syntax =>
     }
 
   def includes[T](p: Parser[T]): Parser[T] =
-    many(any) ~> p <~ many(any)
+    always ~> p <~ always
 
   // A parser that repeatedly feeds input to the parser `p` in the context
   // described by the function `f`.

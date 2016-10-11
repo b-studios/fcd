@@ -557,7 +557,7 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
     multilineString shouldParse "'''Hello \" \n\" world'''"
 
     // for testing
-    val collect = consumed(many(any)) ^^ { x => x.mkString }
+    val collect = consumed(always) ^^ { x => x.mkString }
 
     // for now just filter newlines
     val p = transform[String](multilineString, singleString | comment, filterNewlines)(collect)
