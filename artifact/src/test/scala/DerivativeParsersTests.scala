@@ -661,4 +661,20 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
     stmt shouldParse    "def foo():\n  foo\n  def bar():\n    '''\nhello\n'''\n  bar\n"
   }
 
+  describe("Regression: `not` should preserve invariant `p.results.isEmpty != p.accepts`") {
+    val p = neg("a" | "b")
+    val p_a = p <<< "a"
+    val p_b = p <<< "b"
+    val p_c = p <<< "c"
+
+    it ("should preserve the invariant when performing optimization rewrites") {
+      p_a.accepts shouldBe false
+      p_a.accepts shouldBe (!p_a.results.isEmpty)
+      p_b.accepts shouldBe false
+      p_b.accepts shouldBe (!p_b.results.isEmpty)
+      p_c.accepts shouldBe true
+      p_c.accepts shouldBe (!p_c.results.isEmpty)
+    }
+  }
+
 }

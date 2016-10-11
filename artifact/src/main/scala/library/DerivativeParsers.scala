@@ -173,7 +173,8 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
   }
 
   class MapResults[R, U](val p: Parser[R], f: (=> Results[R]) => Results[U]) extends UnaryPrintable(s"mapResults", p) with Parser[U] {
-    def results = f(p.results).distinct
+    // preserve whether p actually has results (f might ignore its argument...)
+    def results = if (p.results.isEmpty) List() else f(p.results).distinct
     def failed  = p.failed
     def accepts = p.accepts
     def consume = (el: Elem) => (p consume el) mapResults f
