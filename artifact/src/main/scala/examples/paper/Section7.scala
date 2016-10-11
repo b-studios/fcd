@@ -1,15 +1,15 @@
 package fcd
 
 /**
- * Section 4 - Implementation
+ * Section 7 - Implementation
  * ==========================
- * This file contains all code examples from section 4 of our paper:
+ * This file contains all code examples from section 7 of our paper:
  *
  *   Brachthäuser, Rendel, Ostermann.
  *   Parsing with First-Class Derivatives
- *   Submitted to OOPSLA 2016.
+ *   To appear in OOPSLA 2016.
  *
- * Section 4 introduces the implementation of our parser combinator library. In
+ * Section 7 introduces the implementation of our parser combinator library. In
  * addition to repeating the few examples from the paper in this file we explain
  * the relation between the implementation in the paper and in the artifact.
  *
@@ -17,7 +17,7 @@ package fcd
  * derivative based parsing as described by Matt Might et al, translated to an
  * object oriented setting.
  */
-trait Section4 extends ParserUsage {
+trait Section7 extends ParserUsage {
 
   // Require a library implementation that also supports the derived combinators
   type Parsers <: RichParsers
@@ -26,7 +26,7 @@ trait Section4 extends ParserUsage {
   import parsers._
 
   /**
-   * Section 4.1, Figure 6a. introduces the concrete type of a parser as
+   * Section 7.1, introduces the concrete type of a parser as
    *
    *   trait P[+R] {
    *     def results: Res[R]
@@ -34,22 +34,23 @@ trait Section4 extends ParserUsage {
    *   }
    *
    * The corresponding concrete type of this artifact can be found in
-   * `DerivativeParsers.scala` (corresponding to Figure 6) which contains the
+   * `DerivativeParsers.scala` (corresponding to Figure 10) which contains the
    * implementation of the interface defined in `Parsers.scala`
    * (corresponding to Figure 1a.).
    *
    * Please note the following important differences:
    * - `derive` is called `consume` in this artifact.
    * - the trait `Parser[+R]` has default implementations for the various
-   *   combinators. This corresponds to the later developments in Section 4.4
+   *   combinators. This corresponds to the later developments in Section 7.4
    *   "Compaction by Dynamic Dispatch".
-   * - We also implemented the combinator for negation (`not`) which we omitted
-   *   for presentation in the paper.
    * - Instead of anonymous subclasses (such as `def fail[R] = new P[R] {...}`)
    *   the various combinators are implemented by named classes / objects
    *   (that is, `object Fail extends P[Nothing] { ... }`).
+   * - We added a special primitive parser `always` which is bisimilar to
+   *   `many(any)` and thus dual (in some sense) to `fail`. Having it as a
+   *   primitive gives rise to some optimizations.
    */
-  object section_4 {
+  object section_7 {
 
     // ### Example. Derivative of some(a)
     //
@@ -75,7 +76,9 @@ trait Section4 extends ParserUsage {
     // special treatment to handle exotic terms as discussed in Section 4.3
     // becomes visible.
 
-    // ### Example for an exotic parser in Section 4.3 - Nonterminals.
+    // ### Example for an exotic parser in Section 7.3 - Nonterminals.
+    // Please note that we use `nonterminal` instead of the paper's abbreviation
+    // `nt`.
     lazy val exotic: Parser[Any] = nonterminal(exotic << 'a')
 
     // We introduce the nonterminal parser combinator to allow for left-recursive

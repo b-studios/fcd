@@ -9,7 +9,7 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
     with BasicCombinatorTests
     with NegationTests
     with LeftrecTests
-    with Section3 with Section4 with Section5 {
+    with Section3 with Section5 with Section7 {
 
   def _parsers: DerivativeParsers.type = DerivativeParsers
   override lazy val parsers: DerivativeParsers.type = _parsers
