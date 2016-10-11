@@ -225,9 +225,6 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
       val qss = (p.results map f) map (_ consume in)
       qss.foldLeft(next)(_ alt _)
     }
-
-    // distribute not over flatMap
-    // override def not = p.not alt (p flatMap (r => f(r).not))
     override def toString = "flatMap"
   }
 
