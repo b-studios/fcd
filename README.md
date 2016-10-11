@@ -157,14 +157,14 @@ provide some overview on how the implementation is structured.
                   the paper. This file corresponds to Figure 1b in Section 3.
 
 - `DerivedOps.scala`: Derived combinators such as those in Figure 1c, Figure 5a
-                  and Figure 9b.
+                  and Figure 6b.
 
 - `CharSyntax.scala`: Derived combinators and parsers specific to a token type
                   `Char`.
 
 - `DerivativeParsers.scala`: Our implementation of derivative based parsing,
                   implementing the interface of `Parser.scala`. This file
-                  corresponds to Figure 6 in the paper.
+                  corresponds to Figure 10 in the paper.
 
 - `Printable.scala`: Helper functions to print graphical representations of
                   parsers.

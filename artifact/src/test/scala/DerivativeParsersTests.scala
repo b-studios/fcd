@@ -9,7 +9,7 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
     with BasicCombinatorTests
     with NegationTests
     with LeftrecTests
-    with Section3 with Section5 with Section7 {
+    with Section3 with Section4 with Section7 {
 
   def _parsers: DerivativeParsers.type = DerivativeParsers
   override lazy val parsers: DerivativeParsers.type = _parsers
@@ -73,7 +73,7 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
   }
 
   describe("Simplified tables for paper") {
-    import section_5_2.table
+    import section_4_2.table
 
     lazy val xs = many(some('x') ~ '\n')
 
@@ -322,7 +322,7 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
   }
 
   describe("Parens parser") {
-    import section_5_2.parens
+    import section_4_2.parens
     parens shouldParse ""
     parens shouldParse "()"
     parens shouldParse "(())"
@@ -330,7 +330,7 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
   }
 
   describe("Retroactively, allow spaces in arbitrary positions") {
-    import section_5_2.{ spaced, parens }
+    import section_4_2.{ spaced, parens }
     val sp = spaced(parens)
 
     sp shouldParse "((()))"
@@ -342,7 +342,7 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
   }
 
   describe("Allowing parens in code blocks") {
-    import section_5_2._
+    import section_4_2._
 
     as shouldParse "aaa\n"
     as shouldParse "\n"
@@ -381,7 +381,7 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
 
   describe("Unescape") {
 
-    import section_5_2._
+    import section_4_2._
 
     unescape(many('\n')) shouldParse """\n\n\n"""
     unescape(many("\n" | "a")) shouldParse """\na\n\n"""
@@ -389,7 +389,7 @@ class DerivativeParsersTests extends FunSpec with Matchers with CustomMatchers
   }
 
   describe("Combined examples") {
-    import section_5_2._
+    import section_4_2._
     combined shouldParse """aaa
                            ^""".stripMargin('^')
 

@@ -1,18 +1,18 @@
 package fcd
 
 /**
- * Section 5 - Applications
+ * Section 4 - Applications
  * ==========================
  * This file contains all code examples from section 5 of our paper:
  *
  *   Brachthäuser, Rendel, Ostermann.
  *   Parsing with First-Class Derivatives
- *   Submitted to OOPSLA 2016.
+ *   To appear in OOPSLA 2016.
  *
- * Section 5 gives additional applications and use cases where our approach
+ * Section 4 gives additional applications and use cases where our approach
  * results in a modular solution.
  */
-trait Section5 extends ParserUsage { self: Section3 =>
+trait Section4 extends ParserUsage { self: Section3 =>
 
   // Require a library implementation that also supports the derived combinators
   type Parsers <: RichParsers
@@ -22,9 +22,9 @@ trait Section5 extends ParserUsage { self: Section3 =>
 
 
   /**
-   * Section 5.1 - Increased Reuuse through Parser Selection
+   * Section 4.1 - Increased Reuuse through Parser Selection
    */
-  object section_5_1 {
+  object section_4_1 {
 
     // very simplified grammar to illustrate parser selection
     import section_3_5_improved._
@@ -52,9 +52,9 @@ trait Section5 extends ParserUsage { self: Section3 =>
   }
 
   /**
-   * Section 5.2 Modular Definitions as Combinators
+   * Section 4.2 Modular Definitions as Combinators
    */
-  object section_5_2 {
+  object section_4_2 {
     def unescChar(c: Char): String = StringContext treatEscapes s"\\$c"
 
     // ### Example. Preprocessor that unescapes backslash escaped characters
@@ -72,7 +72,7 @@ trait Section5 extends ParserUsage { self: Section3 =>
 
     val lineEnd = many(' ') ~ '\n'
 
-    // ### Example Figure 9a. Combinators for interleaved parsing of fenced code
+    // ### Example Figure 6a. Combinators for interleaved parsing of fenced code
     //                        blocks.
     val marker: Parser[Any] = lineEnd ~ "~~~" ~ lineEnd
 
@@ -135,7 +135,7 @@ trait Section5 extends ParserUsage { self: Section3 =>
         case c    => spaced(p << c)
       }
 
-    // ### Example Figure 9c. Modular definition of a parser combinator for
+    // ### Example Figure 6c. Modular definition of a parser combinator for
     //                        ASCII-tables.
     // The only parser that makes use of `<<` is delegateCells, all others just
     // use standard combinators
