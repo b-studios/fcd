@@ -263,22 +263,19 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
       }
     }
 
-
     private[this] val cache: mutable.ListMap[Elem, Parser[R]] = mutable.ListMap.empty
-    protected[this] def compute(el: Elem): Parser[R] = {
-      lazy val next: Parser[R] = p consume el
-      lazy val nt: Parser[R] = {
-        // necessary for left-recursive grammars
-        nonterminal(next)
-      }
-      // this forces p, which might lead to a diverging derivation
-      if (p.failed)
-        fail
-      else
-        nt
-    }
+    // Wrapping in `nonterminal` is cecessary for left-recursive
+    // grammars and for grammars like "DerivativeParsers / preprocessor"
+    // that recursively derive. Optimizing the nonterminal node away causes
+    // divergence on these grammars. Worse, in the latter case
+    // forcing `next` will already cause divergence.
     override def consume: Elem => Parser[R] = el =>
-      cache.getOrElseUpdate(el, compute(el))
+      cache.getOrElseUpdate(el,
+        if (p.failed)
+          fail
+        else
+          nonterminal(p consume el)
+      )
 
     def named(str: => String): this.type = {
       name = str
