@@ -231,13 +231,18 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
   class Nonterminal[+R](_p: => Parser[R]) extends Parser[R] {
     lazy val p = _p
 
-    def accepts: Boolean    = nullable.value
-    def results: Results[R] = resultsAttr.value
-    def failed: Boolean     = empty.value
+    def accepts: Boolean    = propertiesFix.nullable.value
+    def failed: Boolean     = propertiesFix.empty.value
+    def results: Results[R] = resultsFix.results.value
 
-    protected[this] object fix1 extends Attributed {
+    // This separation into two fixed points is essential to
+    // prevent excessive recomputation.
+    protected[this] object propertiesFix extends Attributed {
       object nullable extends Attribute[Boolean](false,_ || _,implies)
       object empty extends Attribute[Boolean](true,_ && _,follows)
+
+      empty       := p.failed
+      nullable    := p.accepts
 
       override protected[this] def updateAttributes() {
         empty.update()
@@ -245,60 +250,35 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
       }
     }
 
-    protected[this] object fix2 extends Attributed {
-
+    protected[this] object resultsFix extends Attributed {
       object results extends Attribute[List[R]](
         List.empty,
         (nw, ol) => (nw ++ ol).distinct,
         (nw, ol) => nw.toSet.subsetOf(ol.toSet))
 
+      results := p.results
 
       override protected[this] def updateAttributes() {
         results.update()
       }
     }
 
-    val resultsAttr = fix2.results
-    val empty = fix1.empty
-    val nullable = fix1.nullable
 
-    resultsAttr := p.results
-    empty       := p.failed
-    nullable    := p.accepts
-
-
-    // The second try allows to recognize
-    // b, ab,aab, ... with
-    // lazy val A: NT[_] = "aaaab" | A << 'a'
-    sealed trait DerivationResult[+R]
-    case class Stable[+R](result: Parser[R]) extends DerivationResult[R]
-    case object PreliminaryFail extends DerivationResult[Nothing]
-
-    private[this] val cache: mutable.ListMap[Elem, DerivationResult[R]] = mutable.ListMap.empty
+    private[this] val cache: mutable.ListMap[Elem, Parser[R]] = mutable.ListMap.empty
     protected[this] def compute(el: Elem): Parser[R] = {
       lazy val next: Parser[R] = p consume el
       lazy val nt: Parser[R] = {
+        // necessary for left-recursive grammars
         nonterminal(next)
       }
       // this forces p, which might lead to a diverging derivation
-      // so we first need to memoize preliminary fail.
       if (p.failed)
         fail
       else
         nt
     }
     override def consume: Elem => Parser[R] = el =>
-      cache.getOrElseUpdate(el, {
-        cache(el) = PreliminaryFail;
-        Stable(compute(el))
-      }) match {
-        case PreliminaryFail  =>
-          cache(el) = Stable(fail)
-          val res = compute(el)
-          cache(el) = Stable(res)
-          res
-        case Stable(p) => p
-      }
+      cache.getOrElseUpdate(el, compute(el))
 
     def named(str: => String): this.type = {
       name = str
