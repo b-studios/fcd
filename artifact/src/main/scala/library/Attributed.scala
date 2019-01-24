@@ -91,13 +91,9 @@ trait Attributed {
   }
 
   // Subsumption tests for attributes:
-  private def implies (a : Boolean, b : Boolean) = (!a) || b
-  private def follows (a : Boolean, b : Boolean) = (!b) || a
-
-  object nullable extends Attribute[Boolean](false,_ || _,implies)
-  object empty extends Attribute[Boolean](true,_ && _,follows)
-
-  protected[this] def updateAttributes() { nullable.update() }
+  protected[this] def implies (a : Boolean, b : Boolean) = (!a) || b
+  protected[this] def follows (a : Boolean, b : Boolean) = (!b) || a
+  protected[this] def updateAttributes(): Unit
 
   private def fix() {
     this.generation = FixedPoint.generation

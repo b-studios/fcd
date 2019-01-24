@@ -236,6 +236,9 @@ trait DerivativeParsers extends Parsers { self: DerivedOps =>
     def failed: Boolean     = empty.value
 
     protected[this] object fix1 extends Attributed {
+      object nullable extends Attribute[Boolean](false,_ || _,implies)
+      object empty extends Attribute[Boolean](true,_ && _,follows)
+
       override protected[this] def updateAttributes() {
         empty.update()
         nullable.update()
