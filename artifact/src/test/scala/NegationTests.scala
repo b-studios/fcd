@@ -1,12 +1,13 @@
 package fcd
 package test
 
-import org.scalatest._
+import scala.language.implicitConversions
+import org.scalatest.funspec.AnyFunSpec
 
-trait NegationTests extends CustomMatchers { self: FunSpec with Matchers =>
+trait NegationTests {
+  self: AnyFunSpec & CustomMatchers[RichParsers] =>
 
-  import parsers._
-  import parsers.{ not => neg }
+  import parsers.{not as neg, *}
 
   describe("parser \"not(aa)\"") {
     val p = neg("aa")
@@ -49,7 +50,7 @@ trait NegationTests extends CustomMatchers { self: FunSpec with Matchers =>
   }
 
   describe("parser \"not((baaa | ba) ~ aa ~ .*) & lower*\"") {
-    val p: Parser[_] = neg(("baaa" | "ba") ~ "aa" ~ many(any)) & many(lower)
+    val p = neg(("baaa" | "ba") ~ "aa" ~ many(any)) & many(lower)
     p shouldNotParse "baaa"
     p shouldNotParse "baaaxx"
     p shouldParse ""

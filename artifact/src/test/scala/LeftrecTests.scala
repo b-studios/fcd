@@ -1,10 +1,13 @@
 package fcd
 package test
-import org.scalatest._
 
-trait LeftrecTests extends CustomMatchers { self: FunSpec with Matchers =>
+import scala.language.implicitConversions
+import org.scalatest.funspec.AnyFunSpec
 
-  import parsers._
+trait LeftrecTests {
+  self: AnyFunSpec & CustomMatchers[RichParsers] =>
+
+  import parsers.{succeed as succ, *}
 
   describe("lazyness of alt") {
 
@@ -14,26 +17,26 @@ trait LeftrecTests extends CustomMatchers { self: FunSpec with Matchers =>
     }
 
     describe("p = p ~ . | .") {
-      lazy val p: NT[_] = p ~ any | any
+      lazy val p: NT[Any] = p ~ any | any
       p shouldParse "a"
     }
 
     describe("p = . | p ~ .") {
-      lazy val p: NT[_] = any | p ~ any
+      lazy val p: NT[Any] = any | p ~ any
       p shouldParse "a"
     }
 
     describe("p = (. | .) >> { (. | p) ^^ id }") {
-      lazy val p: NT[Any] = (p | any) flatMap { _ => (any | p) map identity }
-      p.shouldParse("aa")
-      p.shouldParse("aaaaa")
+      lazy val p: NT[Any] = (p | any) >> { _ => (any | p) ^^ identity }
+      p shouldParse "aa"
+      p shouldParse "aaaaa"
     }
 
     describe("p = (. | p) >> { a }") {
-      lazy val p: NT[Any] = (any | p) flatMap {  _ => 'a' }
-      p.shouldParse("aa")
-      p.shouldParse("aaa")
-      p.shouldParse("aaaaaa")
+      lazy val p: NT[Any] = (any | p) >> { _ => 'a' }
+      p shouldParse "aa"
+      p shouldParse "aaa"
+      p shouldParse "aaaaaa"
     }
   }
 
@@ -53,7 +56,7 @@ trait LeftrecTests extends CustomMatchers { self: FunSpec with Matchers =>
   describe("left recursion") {
 
     describe("A = A ~ a | empty") {
-      lazy val A: NT[_] = A ~ 'a' | succeed(42)
+      lazy val A: NT[Any] = A ~ 'a' | succ(42)
 
       A shouldParse ""
       A shouldParse "a"
@@ -61,7 +64,7 @@ trait LeftrecTests extends CustomMatchers { self: FunSpec with Matchers =>
     }
 
     describe("A = empty | A ~ a ") {
-      lazy val A: NT[_] = succeed(42) | A ~ 'a'
+      lazy val A: NT[Any] = succ(42) | A ~ 'a'
 
       A shouldParse ""
       A shouldParse "a"
@@ -73,7 +76,7 @@ trait LeftrecTests extends CustomMatchers { self: FunSpec with Matchers =>
     describe("one level indirect leftrecursion") {
       lazy val num: Parser[Any] = many(digit)
       lazy val A: NT[Any] = B ~ '-' ~ num | num
-      lazy val B: NT[Any] = succeed(()) ~ A
+      lazy val B: NT[Any] = succ(()) ~ A
 
       // A shouldParse "1"
       // A shouldParse "12"
@@ -89,8 +92,8 @@ trait LeftrecTests extends CustomMatchers { self: FunSpec with Matchers =>
     describe("two levels indirect leftrecursion") {
       lazy val num: Parser[Any] = some(digit)
       lazy val A: NT[Any] = B ~ '-' ~ num | num
-      lazy val B: NT[Any] = succeed(()) ~ C ~ '+' ~ num
-      lazy val C: NT[Any] = succeed(()) ~ A
+      lazy val B: NT[Any] = succ(()) ~ C ~ '+' ~ num
+      lazy val C: NT[Any] = succ(()) ~ A
 
       A shouldParse "1"
       A shouldParse "12"
@@ -106,7 +109,7 @@ trait LeftrecTests extends CustomMatchers { self: FunSpec with Matchers =>
 
     // From "Packrat parsers can support left-recursion"
     describe("super linear parse time") {
-      lazy val start: NT[Any] = ones ~ '2' | '1' ~ start | succeed(())
+      lazy val start: NT[Any] = ones ~ '2' | '1' ~ start | succ(())
       lazy val ones: NT[Any] = ones ~ '1' | '1'
 
       start shouldParse ""
@@ -121,7 +124,7 @@ trait LeftrecTests extends CustomMatchers { self: FunSpec with Matchers =>
     }
 
     describe("A = A ~ b | c") {
-      lazy val A: NT[_] = A ~ 'b' | 'c'
+      lazy val A: NT[Any] = A ~ 'b' | 'c'
 
       A shouldParse "c"
       A shouldParse "cb"
@@ -131,7 +134,7 @@ trait LeftrecTests extends CustomMatchers { self: FunSpec with Matchers =>
     }
 
     describe("A = empty ~ A ~ b | empty") {
-      lazy val A: NT[Any] = succeed("done") ~ A ~ 'b' | succeed("done")
+      lazy val A: NT[Any] = succ("done") ~ A ~ 'b' | succ("done")
       A shouldParse ""
       A shouldParse "b"
       A shouldParse "bb"
@@ -140,7 +143,7 @@ trait LeftrecTests extends CustomMatchers { self: FunSpec with Matchers =>
     // should parse at most as many 'd's as it parses 'b's.
     describe("A = B ~ A ~ b | c\n  B = d | empty") {
       lazy val A: NT[Char] = B ~> A <~ 'b' | 'c'
-      lazy val B: NT[_] = charParser('d') | succeed("done")
+      lazy val B: NT[Any] = 'd' | succ("done")
 
       A shouldParse "c"
       A shouldParse "cb"
@@ -155,11 +158,11 @@ trait LeftrecTests extends CustomMatchers { self: FunSpec with Matchers =>
       lazy val p = many(some('a'))
 
       p shouldParse ""
-      p shouldParse("a")
-      p shouldParse("aaa")
-      p shouldParse("aaaaaaaaaa")
-      p shouldNotParse("b")
-      p shouldNotParse("aaab")
+      p shouldParse "a"
+      p shouldParse "aaa"
+      p shouldParse "aaaaaaaaaa"
+      p shouldNotParse "b"
+      p shouldNotParse "aaab"
     }
 
     describe("del(ones)") {
@@ -176,8 +179,8 @@ trait LeftrecTests extends CustomMatchers { self: FunSpec with Matchers =>
       lazy val rr: NT[String] = "1" ~> rr | "1"
       lazy val ll: NT[String] = ll <~ "1" | "1"
 
-      ll shouldParse ("1" * 40)
-      rr shouldParse ("1" * 41)
+      ll shouldParse "1".repeat(40)
+      rr shouldParse "1".repeat(41)
     }
 
     // Grammar from Tillmann Rendel's GLL library
@@ -187,38 +190,25 @@ trait LeftrecTests extends CustomMatchers { self: FunSpec with Matchers =>
       A shouldParse "a"
       A shouldParse "aa"
       A shouldParse "aaa"
-      A shouldParse ("a" * 100)
+      A shouldParse "a".repeat(100)
 
       lazy val A2: Parser[Any] = some(some('a'))
-      A2 shouldParse ("a" * 1000)
+      A2 shouldParse "a".repeat(1000)
     }
 
     describe("mixed mutual recursion") {
 
       lazy val expression: NT[Any] =
-        ( literal ~ '+'
-        | condExpr
-        )
+        (literal ~ '+'
+          | condExpr)
 
-      lazy val condExpr: NT[Any] =
-        ( condExpr ~ '?'
-        | eqExpr
-        )
+      lazy val condExpr: NT[Any] = condExpr ~ '?' | eqExpr
 
-      lazy val eqExpr: NT[Any] =
-        ( eqExpr ~ '*'
-        | literal
-        )
+      lazy val eqExpr: NT[Any] = eqExpr ~ '*' | literal
 
-      lazy val literal: NT[Any] =
-        ( many('a')
-        | '[' ~ arrayEl
-        )
+      lazy val literal: NT[Any] = many('a') | '[' ~ arrayEl
 
-      lazy val arrayEl: NT[Any] =
-        ( expression
-        | succeed ("undefined")
-        )
+      lazy val arrayEl: NT[Any] = expression | succ("undefined")
 
       expression shouldParse ""
       expression shouldParse "a"
@@ -230,22 +220,22 @@ trait LeftrecTests extends CustomMatchers { self: FunSpec with Matchers =>
     }
 
     describe("terms") {
+      enum Term {
+        case BinOp(lhs: Term, op: String, rhs: Term)
+        case Num(n: Int)
+      }
 
-      trait Term
-      case class BinOp(lhs: Term, op: String, rhs: Term) extends Term
-      case class Num(n: Int) extends Term
+      import Term._
 
       lazy val term: NT[Term] =
-        ( term ~ "+" ~ fact ^^ { case l ~ op ~ r => BinOp(l, op, r) }
-        | term ~ "-" ~ fact ^^ { case l ~ op ~ r => BinOp(l, op, r) }
-        | fact
-        )
+        (term ~ "+" ~ fact ^^ { case ((l, op), r) => BinOp(l, op, r) }
+          | term ~ "-" ~ fact ^^ { case ((l, op), r) => BinOp(l, op, r) }
+          | fact)
 
       lazy val fact: NT[Term] =
-        ( fact ~ "*" ~ num ^^ { case l ~ op ~ r => BinOp(l, op, r) }
-        | fact ~ "/" ~ num ^^ { case l ~ op ~ r => BinOp(l, op, r) }
-        | num
-        )
+        (fact ~ "*" ~ num ^^ { case ((l, op), r) => BinOp(l, op, r) }
+          | fact ~ "/" ~ num ^^ { case ((l, op), r) => BinOp(l, op, r) }
+          | num)
 
       lazy val num: Parser[Num] = some(digit) ^^ (ns => Num(ns.mkString.toInt))
 
@@ -258,7 +248,7 @@ trait LeftrecTests extends CustomMatchers { self: FunSpec with Matchers =>
     describe("balanced smileys") {
       lazy val az: NT[Any] = acceptIf(c => c >= 'a' && c <= 'z')
       lazy val S: NT[Any] = many(az | ' ' | ':' | ':' ~ P | '(' ~ S ~ ')')
-      lazy val P: NT[Any] = charParser('(') | ')'
+      lazy val P: NT[Any] = alt('(', ')')
 
       S shouldParse ""
       S shouldNotParse ":(("
@@ -289,7 +279,7 @@ trait LeftrecTests extends CustomMatchers { self: FunSpec with Matchers =>
       S shouldParse "((((((((((:)))))))))) ((((((((((:)))))))))) ((((((((((:)))))))))) ((((((((((:)))))))))) ((((((((((:)))))))))) ((((((((((:))))))))))"
       S shouldParse "((((((((((((:))))))))))((((((((((:())))))))))))"
       S shouldNotParse "(((((((((()))))))))))"
-      S shouldNotParse  "(((((((((((((((((((()))))))))))))))))))))"
+      S shouldNotParse "(((((((((((((((((((()))))))))))))))))))))"
       S shouldParse "((((((((((:)))))))))))"
       S shouldParse "(a((f((g(((g((:))))g))))))::((((((((((((((((((((:)))))))))))))))))))) ((((((((((((((((((((((((((((((((((((((((((((((((((:)))))))))))))))))))))))))))))))))))))))))))))))))))"
       S shouldParse "((((((((((:)))))))))) ((((((((((:)))))))))) ((((((((((:)))))))))) ((((((((((:)))))))))) ((((((((((:)))))))))) ((((((((((:)))))))))))"
@@ -304,8 +294,8 @@ trait LeftrecTests extends CustomMatchers { self: FunSpec with Matchers =>
     // taken from Tillmann Rendel's GLL library
     describe("grammar with hidden left recursion") {
       lazy val S: NT[Any] = C ~ 'a' | 'd'
-      lazy val B: NT[Any] = succeed(()) | 'a'
-      lazy val C: NT[Any] = charParser('b') | B ~ C ~ 'b' | 'b' ~ 'b'
+      lazy val B: NT[Any] = succ(()) | 'a'
+      lazy val C: NT[Any] = 'b' | B ~ C ~ 'b' | 'b' ~ 'b'
 
       S shouldNotParse ""
       S shouldNotParse "aba"

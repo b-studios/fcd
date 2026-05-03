@@ -1,40 +1,38 @@
 package fcd
 package test
 
-import org.scalatest._
-import org.scalatest.matchers._
+import org.scalatest.funspec.AnyFunSpec
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.matchers.{BeMatcher, MatchResult}
+import org.scalatest.Tag
 
-trait CustomMatchers { self: FunSpec with Matchers =>
+trait CustomMatchers[+P <: Parsers](val parsers: P) extends Matchers {
+  self: AnyFunSpec =>
 
-  // Due to initialization problems we have to use this pattern
-  // of def and lazy val.
-  //
-  // Override _parsers in concrete tests suites with the
-  // appropriate parser implementation.
-  type Parsers = RichParsers
-  def _parsers: RichParsers
-  lazy val parsers = _parsers
-  import parsers.{ Results, isSuccess, Parser, accepts, Elem }
+  import parsers.{Elem, Parser, accepts, isSuccess, parse}
 
-  implicit class ParserTests[T, P <% Parser[T]](p: => P) {
-    def shouldParse[ES <% Iterable[Elem]](s: ES, tags: Tag*) =
-      it (s"""should parse "$s" """, tags:_*) {
+  extension [T](p: => Parser[T]) {
+    infix def shouldParse(s: Iterable[Elem], tags: Tag*) =
+      it(s"""should parse "$s" """, tags*) {
         accepts(p, s) shouldBe true
       }
-    def shouldNotParse[ES <% Iterable[Elem]](s: ES, tags: Tag*) =
-      it (s"""should not parse "$s" """, tags:_*) {
+    infix def shouldNotParse(s: Iterable[Elem], tags: Tag*) =
+      it(s"""should not parse "$s" """, tags*) {
         accepts(p, s) shouldBe false
+      }
+    // for unambiguous parses
+    infix def shouldParseWith(s: Iterable[Elem], result: T) =
+      it(s"""should parse "$s" with correct result""") {
+        parse(p, s) shouldBe List(result)
       }
   }
 
-  class SuccessMatcher extends BeMatcher[Parser[_]] {
-    def apply(left: Parser[_]) =
+  class SuccessMatcher[T] extends BeMatcher[Parser[T]] {
+    def apply(left: Parser[T]) =
       MatchResult(
         isSuccess(left),
         left.toString + " was not successful",
         left.toString + " was successful"
       )
   }
-  lazy val successful = new SuccessMatcher
-  lazy val failure = not (successful)
 }

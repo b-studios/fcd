@@ -8,13 +8,20 @@
 # sbt specific
 .cache
 .history
-.lib/
-dist/*
-target/
-lib_managed/
-src_managed/
-project/boot/
-project/plugins/project/
+.lib
+dist
+target
+lib_managed
+src_managed
+project
+.scala-build
 
+# Tooling
+.project
+.metals
+.bsp
+.bloop
+.vagrant
 
-
+# Testing
+test.png

@@ -1,29 +1,21 @@
 package fcd
 
-/**
- * Section 4 - Applications
- * ==========================
- * This file contains all code examples from section 5 of our paper:
- *
- *   Brachthäuser, Rendel, Ostermann.
- *   Parsing with First-Class Derivatives
- *   To appear in OOPSLA 2016.
- *
- * Section 4 gives additional applications and use cases where our approach
- * results in a modular solution.
- */
-trait Section4 extends ParserUsage { self: Section3 =>
+import scala.language.implicitConversions
 
-  // Require a library implementation that also supports the derived combinators
-  type Parsers <: RichParsers
+/** Section 4 – Applications
+  *
+  * This file contains all code examples from section 4 of our paper.
+  *
+  * Brachthäuser, Rendel, Ostermann. Parsing with First-Class Derivatives To
+  * appear in OOPSLA 2016.
+  *
+  * Section 4 gives additional applications and use cases where our approach
+  * results in a modular solution.
+  */
+trait Section4 { self: Section3 & RichParsers =>
 
-  // import all symbols from the library
-  import parsers._
-
-
-  /**
-   * Section 4.1 - Increased Reuuse through Parser Selection
-   */
+  /** Section 4.1 - Increased Reuuse through Parser Selection
+    */
   object section_4_1 {
 
     // very simplified grammar to illustrate parser selection
@@ -31,8 +23,7 @@ trait Section4 extends ParserUsage { self: Section3 =>
 
     lazy val stmt: NT[Any] =
       ("while" ~ space ~ "(true):" ~ block
-      | some('x') ~ '\n'
-      )
+        | some('x') ~ '\n')
 
     lazy val stmts = many(stmt)
     lazy val block: NT[Any] = '\n' ~ indented(stmts)
@@ -51,11 +42,10 @@ trait Section4 extends ParserUsage { self: Section3 =>
     lazy val untilStmt = "until" ~> (stmt <<< "while")
   }
 
-  /**
-   * Section 4.2 Modular Definitions as Combinators
-   */
+  /** Section 4.2 Modular Definitions as Combinators
+    */
   object section_4_2 {
-    def unescChar(c: Char): String = StringContext treatEscapes s"\\$c"
+    def unescChar(c: Char) = StringContext processEscapes s"\\$c"
 
     // ### Example. Preprocessor that unescapes backslash escaped characters
     //
@@ -64,9 +54,10 @@ trait Section4 extends ParserUsage { self: Section3 =>
     //   unescape(many("\n" | "a")) parse "\\na\\n\\naaa"
     def unescape[T](p: Parser[T]): Parser[T] =
       done(p) | eat {
-        case '\\' => char >> { c =>
-          unescape( p <<< unescChar(c) )
-        }
+        case '\\' =>
+          char >> { c =>
+            unescape(p <<< unescChar(c))
+          }
         case c => unescape(p << c)
       }
 
@@ -74,19 +65,17 @@ trait Section4 extends ParserUsage { self: Section3 =>
 
     // ### Example Figure 6a. Combinators for interleaved parsing of fenced code
     //                        blocks.
-    val marker: Parser[Any] = lineEnd ~ "~~~" ~ lineEnd
+    val marker = lineEnd ~ "~~~" ~ lineEnd
 
     // We have two states: Inside the code block and outside the code block
     def inCode[R, S](text: Parser[R], code: Parser[S]): NT[(R, S)] =
-      ( marker ~> inText(text, code)
-      | eat { c => inCode(text, code << c) }
-      )
+      (marker ~> inText(text, code)
+        | eat { c => inCode(text, code << c) })
 
     def inText[R, S](text: Parser[R], code: Parser[S]): NT[(R, S)] =
-      ( done(text & code)
-      | marker ~> inCode(text, code)
-      | eat { c => inText(text << c, code) }
-      )
+      (done(text & code)
+        | marker ~> inCode(text, code)
+        | eat { c => inText(text << c, code) })
 
     // Simple variant of balanced parenthesis
     lazy val parens: NT[Any] = '(' ~ parens ~ ')' | succeed(())
@@ -98,7 +87,7 @@ trait Section4 extends ParserUsage { self: Section3 =>
     //
     //   aaaaa
     //   aaaaa
-    val as: Parser[Any] = some(many('a') <~ lineEnd)
+    val as = some(many('a') <~ lineEnd)
 
     // Now we can retroactively combine the two parsers `parens` and `as` by
     // The resulting parser can parse for instance words like
@@ -128,12 +117,11 @@ trait Section4 extends ParserUsage { self: Section3 =>
     //              arbitrary positions.
     //
     // We will use this combinator in the following example
-    def spaced[T]: Parser[T] => Parser[T] = p =>
-      done(p) | eat {
-        case ' '  => spaced(p)
-        case '\n' => spaced(p)
-        case c    => spaced(p << c)
-      }
+    def spaced[T](p: Parser[T]): Parser[T] = done(p) | eat {
+      case ' '  => spaced(p)
+      case '\n' => spaced(p)
+      case c    => spaced(p << c)
+    }
 
     // ### Example Figure 6c. Modular definition of a parser combinator for
     //                        ASCII-tables.
@@ -146,25 +134,31 @@ trait Section4 extends ParserUsage { self: Section3 =>
       (head <~ lineEnd) >> { layout => body(layout, cell) }
 
     // a parser computing the table layout
-    def head: Parser[Layout] = some('+'~> manyCount('-')) <~ '+'
+    def head: Parser[Layout] = some('+' ~> manyCount('-')) <~ '+'
 
-    def body[T](layout: Layout, cell: Parser[T]): Parser[List[List[T]]] =
+    def body[T](layout: Layout, cell: Parser[T]) =
       many(rowLine(layout, layout.map(n => cell)) <~ rowSeparator(layout))
 
     // given a layout, creates a parser for row separators
-    def rowSeparator(layout: Layout): Parser[Any] =
-      layout.map { n => ("-" * n) + "+" }.foldLeft("+")(_+_) ~ lineEnd
+    def rowSeparator(layout: Layout) =
+      layout
+        .map { n => List.fill(n)('-').mkString + "+" }
+        .foldLeft("+")(_ + _) ~ lineEnd
 
     // either read another rowLine or quit cell parsers and collect results
     def rowLine[T](layout: Layout, cells: List[Parser[T]]): Parser[List[T]] =
-      ( ('|' ~> distr(delegateCells(layout, cells)) <~ lineEnd) >> { cs => rowLine(layout, cs) }
-      | collect(cells)
-      )
+      (('|' ~> distr(delegateCells(layout, cells)) <~ lineEnd) >> { cs =>
+        rowLine(layout, cs)
+      }
+        | collect(cells))
 
     // first feed n tokens to every cell parser, then feed newline and read a pipe
-    def delegateCells[T](layout: Layout, cells: List[Parser[T]]): List[Parser[Parser[T]]] =
-      layout.zip(cells).map {
-        case (n, p) => delegateN(n, p).map(_ << '\n') <~ '|'
+    def delegateCells[T](
+        layout: Layout,
+        cells: List[Parser[T]]
+    ) =
+      layout.zip(cells).map { case (n, p) =>
+        map(delegateN(n, p), (_ << '\n')) <~ '|'
       }
 
     // We can use the table combinator recursively to parse nested tables.
@@ -184,7 +178,7 @@ trait Section4 extends ParserUsage { self: Section3 =>
     //   |~~~ |
     //   |aaaa|
     //   +----+
-    lazy val combined: NT[Any]    = inText(asAndTables, spaced(parens))
+    lazy val combined: NT[Any] = inText(asAndTables, spaced(parens))
     lazy val asAndTables: NT[Any] = as | table(combined)
 
     // Again, some more examples of words that are recognized by `combined` can

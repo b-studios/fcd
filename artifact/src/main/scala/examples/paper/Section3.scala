@@ -1,47 +1,36 @@
 package fcd
 
-/**
- * Section 3 - First-class Derivatives: Gaining
- * Fine Grained Control over the Input Stream
- * ===========================================
- * This file contains all code examples from section 3 of our paper:
- *
- *   Brachthäuser, Rendel, Ostermann.
- *   Parsing with First-Class Derivatives
- *   To appear in OOPSLA 2016.
- *
- * The examples are grouped by subsections. For every subsection with
- * examples we introduced a corresponding Scala object below.
- *
- * You can experiment with the examples of this file in the REPL by:
- *
- *   > console
- *   scala> import paper.section_3_2._
- *   scala> number.parse("42")
- *   res0: Results[Int] = List(42)
- *
- * You can reach the Scala console by entering 'console' at the
- * sbt prompt.
- *
- * Additional note: All examples are parametrized by the parser combinator
- * library to allow experimenting with different implementations. This should
- * also support future research and alternate implementations.
- *
- * All the traits containing paper examples are eventually combined and
- * instantiated to an object `paper` in `Paper.scala`.
- */
+import scala.language.implicitConversions
 
-trait Section3 extends ParserUsage {
+/** Section 3 – Gaining Fine Grained Control over the Input Stream
+  *
+  * This file contains all code examples from section 3 of our paper.
+  *
+  * Brachthäuser, Rendel, Ostermann. Parsing with First-Class Derivatives To
+  * appear in OOPSLA 2016.
+  *
+  * The examples are grouped by subsections. For every subsection with examples
+  * we introduced a corresponding Scala object below.
+  *
+  * You can experiment with the examples of this file in the REPL by:
+  *
+  * > console scala> import paper.section_3_2._ scala> number.parse("42") res0:
+  * Results[Int] = List(42)
+  *
+  * You can reach the Scala console by entering 'console' at the sbt prompt.
+  *
+  * Additional note: All examples are parametrized by the parser combinator
+  * library to allow experimenting with different implementations. This should
+  * also support future research and alternate implementations.
+  *
+  * All the traits containing paper examples are eventually combined and
+  * instantiated to an object `paper` in `Paper.scala`.
+  */
 
-  // Require a library implementation that also supports the derived combinators
-  type Parsers <: RichParsers
+trait Section3 { self: RichParsers =>
 
-  // import all symbols from the library
-  import parsers._
-
-  /**
-   * Section 3.2 First-Class Derivatives
-   */
+  /** Section 3.2 First-Class Derivatives
+    */
   object section_3_2 {
 
     // ### Example of Subsection 3.2: First-Class Derivatives (<<)
@@ -89,7 +78,6 @@ trait Section3 extends ParserUsage {
     // This requires that you have graphviz installed on your computer.
     val q: Parser[List[Char]] = many('a')
 
-
     // ### Example of Subsection 3.2: Combinator "nt"
     //
     // Difference: The combinator `nt` in the paper is called `nonterminal` in
@@ -107,12 +95,13 @@ trait Section3 extends ParserUsage {
     //
     // The implicit conversions that wrap the production into `nonterminal`
     // calls are defined in the file Syntax.scala
-    val digit: Parser[Int] = acceptIf(_.isDigit) ^^ { s => Integer.valueOf(s.toString) }
+    val digit: Parser[Int] = acceptIf(_.isDigit) ^^ { s =>
+      Integer.valueOf(s.toString)
+    }
 
     val number: Parser[Int] =
-      nonterminal( number ~ digit ^^ { case (n, d) => (n * 10) + d }
-                 | digit
-                 )
+      nonterminal(number ~ digit ^^ { case (n, d) => (n * 10) + d }
+        | digit)
 
     // To get an overview of the available parser combinator refer to:
     //
@@ -123,25 +112,23 @@ trait Section3 extends ParserUsage {
 
   }
 
-  /**
-   * Section 3.4 Implementation using First-Class Derivatives
-   */
+  /** Section 3.4 Implementation using First-Class Derivatives
+    */
   object section_3_4 {
 
     // Figure 4a. Definition of the combinator indented(p) in terms of <<.
-    def indented[T](p: Parser[T]): Parser[T] =
+    def indented[T](p: Parser[T]) =
       done(p) | (space ~ space) ~> readLine(p)
 
     def readLine[T](p: Parser[T]): Parser[T] =
-      ( no('\n')     >> { c => readLine(p << c) }
-      | accept('\n') >> { c => indented(p << c) }
-      )
+      (no('\n') >> { c => readLine(p << c) }
+        | accept('\n') >> { c => indented(p << c) })
 
     // To inspect the virtual input stream of some parser `p` in `indented(p)`
     // one can use the following parser as kind of "mock-parser"
     //
     // It will accept all words and return the input stream it has processed.
-    val collect = consumed(many(any)) map (_.mkString)
+    val collect = consumed(many(any)) ^^ { _.mkString }
 
     // for instance, you can try the following in the REPL
     //
@@ -158,27 +145,24 @@ trait Section3 extends ParserUsage {
 
     // please note the use of combinator `manyN(n, space)` which recognizes
     // n-many spaces.
-    def indentBy[T](n: Int): Parser[T] => Parser[T] = p =>
+    def indentBy[T](n: Int)(p: Parser[T]) =
       done(p) | manyN(n, space) ~> readLine(n)(p)
 
     // Only change: pass the level of indentation as parameter around
     def readLine[T](n: Int)(p: Parser[T]): Parser[T] =
-      ( no('\n')     >> { c => readLine(n)(p << c) }
-      | accept('\n') >> { c => indentBy(n)(p << c) }
-      )
+      (no('\n') >> { c => readLine(n)(p << c) }
+        | accept('\n') >> { c => indentBy(n)(p << c) })
 
     // Here we first read some spaces (at least one) and then invoke
     // `indentBy`.
-    def indented[T](p: Parser[T]): Parser[T] = consumed(some(space)) >> { case s =>
+    def indented[T](p: Parser[T]) = consumed(some(space)) >> { s =>
       // this simulates lookahead for greedy matching
       no(' ') >> { c => indentBy(s.size)(p) <<< s << c }
     }
   }
 
-
-  /**
-   * Derived Combinators
-   */
+  /** Derived Combinators
+    */
   object section_3_5 {
 
     // Section 3.5 introduces `delegate` and `repeat`. The implementation of
@@ -198,7 +182,6 @@ trait Section3 extends ParserUsage {
     def injectA[T](p: Parser[T]): Parser[T] =
       ((any ~ any) &> delegate(p)) >> { p2 => 'a' ~> p2 }
 
-
     // Not in the paper: Example for usage of combinator `repeat`.
     // every two tokens recognize an intermediate token 'a'.
     //
@@ -209,13 +192,13 @@ trait Section3 extends ParserUsage {
     // Please note, that since we repeatedly delimit with `any ~ any` the
     // resulting parser can only recognize words in { (xxa)* | x ∈ Σ }
     def injectAs[T] = repeat[T] { p =>
-        ((any ~ any) &> delegate(p)) <~ 'a'
+      ((any ~ any) &> delegate(p)) <~ 'a'
     }
 
     // Figure 5b. Definition of the combinator `indented(p)` in terms of `delegate`.
     lazy val line = many(no('\n')) <~ '\n'
     def indented[T]: Parser[T] => Parser[T] = repeat[T] { p =>
-      (space ~ space)  ~> (line &> delegate(p))
+      (space ~ space) ~> (line &> delegate(p))
     }
 
     // To experiment with this implementation of indented you can selectively
@@ -226,11 +209,9 @@ trait Section3 extends ParserUsage {
     // involving the indentation combinator.
   }
 
-
-  /**
-   * Symmetrical to section_3_4 and section_3_4_improved we can define flexible
-   * indentation using delegate and repeat.
-   */
+  /** Symmetrical to section_3_4 and section_3_4_improved we can define flexible
+    * indentation using delegate and repeat.
+    */
   object section_3_5_improved {
 
     lazy val line = many(no('\n')) <~ '\n'
@@ -238,7 +219,7 @@ trait Section3 extends ParserUsage {
       manyN(n, space) ~> (line &> delegate(p))
     }
 
-    def indented[T](p: Parser[T]): Parser[T] = consumed(some(space)) >> { case s =>
+    def indented[T](p: Parser[T]) = consumed(some(space)) >> { s =>
       no(' ') >> { c => indentBy(s.size)(p) <<< s << c }
     }
   }

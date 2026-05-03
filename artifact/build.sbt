@@ -1,21 +1,20 @@
 name := "first-class-derivatives"
 
-version := "1.0"
+version := "3.0.2"
 
-scalaVersion := "2.11.7"
+scalaVersion := "3.7.4"
 
 scalacOptions ++= Seq("-feature", "-deprecation")
 
-libraryDependencies += "org.scalatest" %% "scalatest" % "2.2.4" % "test"
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % "test"
 
-resolvers += "Sonatype OSS Snapshots" at
-  "https://oss.sonatype.org/content/repositories/releases"
+resolvers += "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/releases"
 
-parallelExecution in Test := true
+Test / parallelExecution := true
 
-libraryDependencies += "org.scala-lang.modules" % "scala-xml_2.11" % "1.0.5"
+libraryDependencies += "org.scala-lang.modules" %% "scala-xml" % "2.4.0"
 
-initialCommands in console := """import fcd._; import fcd.DerivativeParsers._"""
+console / initialCommands := """import fcd._; import fcd.DerivativeParsers._"""
 
 // For VM users on windows systems, please uncomment the following line:
 // target := file("/home/vagrant/target/")
